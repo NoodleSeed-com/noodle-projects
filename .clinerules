@@ -1,0 +1,57 @@
+# Project Configuration (.clinerules)
+
+## Project Overview
+- Type: Supabase Project
+- Created: 2024-02-22
+- Location: /Users/fahdrafi/VSCode/noodle-projects
+
+## Development Standards
+### Code Style
+- Follow Supabase best practices and conventions
+- Use consistent formatting and naming conventions
+- Document all database schema changes
+
+### CLI Workflow
+- Use Supabase CLI for database operations
+- Follow command pattern: [noun] [verb]
+- Example: `supabase db push`
+
+### Security
+- Store sensitive data in .env files (not in version control)
+- Follow Supabase security best practices
+- Use Row Level Security (RLS) policies
+- Implement proper authentication flows
+
+### Documentation
+- Maintain Memory Bank in cline_docs/
+- Document all schema changes
+- Keep API documentation up to date
+- Document security policies
+
+### Version Control
+- Use meaningful commit messages
+- Follow semantic versioning
+- Document breaking changes
+
+### Testing
+- Write tests for database functions
+- Test RLS policies
+- Validate schema migrations
+
+## Project Dependencies
+- Supabase CLI
+- PostgreSQL knowledge
+- Database design principles
+
+## Best Practices
+- Use migrations for schema changes
+- Implement proper error handling
+- Follow PostgreSQL best practices
+- Use prepared statements
+- Implement proper backups
+
+## Security Guidelines
+- Never commit sensitive data
+- Use environment variables
+- Implement proper access controls
+- Regular security audits
