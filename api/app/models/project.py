@@ -128,6 +128,8 @@ class File(Base):
     def __init__(self, **kwargs):
         if 'path' in kwargs and not kwargs['path']:
             raise ValueError("File path cannot be empty")
+        if 'content' in kwargs and kwargs['content'] is None:
+            raise ValueError("File content cannot be null")
         super().__init__(**kwargs)
     
     # Relationships

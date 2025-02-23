@@ -148,6 +148,37 @@ def test_duplicate_file_paths(client: TestClient, test_project, test_db):
     assert "unique_project_version_path" in str(exc_info.value)
     test_db.rollback()
 
+def test_file_content_null_validation(client: TestClient, test_project, test_db):
+    """Test that null/missing file content is rejected but empty string is allowed."""
+    # Create project and version
+    project_response = client.post("/api/projects/", json=test_project)
+    project_id = project_response.json()["id"]
+    version_id = client.get(f"/api/projects/{project_id}/versions").json()[0]["id"]
+    
+    # Test that empty string is allowed
+    file = File(
+        project_version_id=version_id,
+        path="/empty.txt",
+        content=""
+    )
+    test_db.add(file)
+    test_db.commit()
+    
+    # Verify empty content was stored
+    response = client.get(f"/api/projects/{project_id}/versions/0")
+    assert response.status_code == 200
+    stored_file = next(f for f in response.json()["files"] if f["path"] == "/empty.txt")
+    assert stored_file["content"] == ""
+    
+    # Test that None/null is not allowed
+    with pytest.raises(ValueError) as exc_info:
+        File(
+            project_version_id=version_id,
+            path="/test.txt",
+            content=None
+        )
+    assert "content" in str(exc_info.value)
+    
 def test_file_content_limits(client: TestClient, test_project, test_db):
     """Test handling of file content up to 1MB."""
     # Create project and version
