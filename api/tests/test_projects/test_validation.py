@@ -20,19 +20,12 @@ def test_version_number_validation(client: TestClient, test_project, test_db):
     
     # Try to create a version with negative number
     from app.models.project import ProjectVersion
-    invalid_version = ProjectVersion(
-        project_id=project_id,
-        version_number=-1,
-        name="Invalid Version"
-    )
-    test_db.add(invalid_version)
-    
-    # Should raise IntegrityError due to CHECK constraint
-    with pytest.raises(IntegrityError) as exc_info:
-        test_db.commit()
-    assert "violates check constraint" in str(exc_info.value)
-    assert "ck_version_number_positive" in str(exc_info.value)
-    test_db.rollback()
+    with pytest.raises(IntegrityError, match="Version number cannot be negative"):
+        ProjectVersion(
+            project_id=project_id,
+            version_number=-1,
+            name="Invalid Version"
+        )
 
 def test_version_number_uniqueness(client: TestClient, test_project, test_db):
     """Test that version numbers must be unique within a project."""

@@ -54,6 +54,16 @@
 - Path validation occurs before database operations
 - Database constraints provide additional safety layer
 
+### Version Number Validation Rules
+- Negative numbers are rejected at model level with IntegrityError
+- Version numbers must be unique within a project
+- Version 0 is reserved for initial version
+- Validation occurs at multiple layers:
+  * Model level: Early validation in __init__
+  * Database level: CHECK constraint
+  * API level: Path parameter validation
+- Clear error messages for debugging
+
 ### Database
 - Use UUID primary keys
 - Enable Row Level Security
@@ -102,12 +112,14 @@ api/tests/
 ├── __init__.py          # Make tests a package
 ├── conftest.py          # Global test configuration
 ├── test.env            # Test environment variables
+├── test_main.py        # Main app tests (health, CORS)
 └── test_projects/      # Project-related tests
     ├── conftest.py     # Shared project test fixtures
     ├── test_crud.py    # CRUD operation tests
     ├── test_validation.py  # Input validation tests
     ├── test_versions.py   # Version management tests
-    └── test_files.py     # File handling tests
+    ├── test_files.py     # File handling tests
+    └── test_edge_cases.py # Edge cases and constraints
 ```
 
 #### Test Configuration
@@ -153,13 +165,18 @@ pytest
 pytest --cov=api/app api/tests/ -v
 
 # Run specific test category
-pytest api/tests/test_projects/test_crud.py -v
-pytest api/tests/test_projects/test_validation.py -v
-pytest api/tests/test_projects/test_versions.py -v
-pytest api/tests/test_projects/test_files.py -v
+pytest api/tests/test_main.py -v                          # Main app tests
+pytest api/tests/test_projects/test_crud.py -v            # CRUD operations
+pytest api/tests/test_projects/test_validation.py -v      # Input validation
+pytest api/tests/test_projects/test_versions.py -v        # Version management
+pytest api/tests/test_projects/test_files.py -v           # File handling
+pytest api/tests/test_projects/test_edge_cases.py -v      # Edge cases
 
 # Run all project tests
 pytest api/tests/test_projects/ -v
+
+# Run all tests including main app tests
+pytest api/tests/ -v
 ```
 
 #### Coverage Requirements

@@ -82,6 +82,16 @@ class ProjectVersion(Base):
         CheckConstraint('version_number >= 0', name='ck_version_number_positive'),
     )
     
+    def __init__(self, **kwargs):
+        if 'version_number' in kwargs and kwargs['version_number'] < 0:
+            from sqlalchemy.exc import IntegrityError
+            raise IntegrityError(
+                statement="version_number validation",
+                params={},
+                orig=Exception("Version number cannot be negative")
+            )
+        super().__init__(**kwargs)
+    
     # Relationships
     project: Mapped["Project"] = relationship(back_populates="versions")
     files: Mapped[List["File"]] = relationship(

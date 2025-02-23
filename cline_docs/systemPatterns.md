@@ -77,6 +77,14 @@ The system uses a consistent pattern for version responses that includes associa
    - No gaps required
    - No negative numbers allowed
 
+3. Version Validation:
+   - Multi-layer validation approach:
+     * Model-level validation in __init__: Raises IntegrityError for negative numbers
+     * Database constraint: CHECK version_number >= 0
+     * API-level validation: Path parameter validation for version endpoints
+   - Early validation prevents invalid data from reaching database
+   - Consistent error handling across layers
+
 ## Implementation Patterns
 
 ### Response Transformation
@@ -111,6 +119,14 @@ The system uses a consistent pattern for version responses that includes associa
    ) for id, number, name in result]
    ```
 
+### CORS Pattern
+- Allow all origins in development with ["*"]
+- FastAPI CORSMiddleware behavior:
+  * When allow_origins=["*"], origin is reflected back
+  * Response includes actual requesting origin in access-control-allow-origin
+  * Maintains security while allowing flexible development
+  * Example: Request from "http://localhost" gets "http://localhost" in response header
+
 ### Testing Patterns
 
 1. Test Organization:
@@ -121,7 +137,8 @@ The system uses a consistent pattern for version responses that includes associa
        ├── test_crud.py        # Basic CRUD operations
        ├── test_validation.py  # Input validation
        ├── test_versions.py    # Version management
-       └── test_files.py       # File handling
+       ├── test_files.py       # File handling
+       └── test_edge_cases.py  # Edge cases and constraints
    ```
 
 2. Test Categories:
@@ -129,6 +146,7 @@ The system uses a consistent pattern for version responses that includes associa
    - Validation Tests: Input validation and constraints
    - Version Tests: Version management and relationships
    - File Tests: File handling and response formats
+   - Edge Cases: Boundary conditions and error scenarios
 
 3. Fixture Organization:
    ```python
@@ -152,6 +170,20 @@ The system uses a consistent pattern for version responses that includes associa
    - Validation: Test constraints and error cases
    - Versions: Test relationships and numbering
    - Files: Test content and structure
+   - Edge Cases: Test boundary conditions and error handling
+
+5. Validation Testing Pattern:
+   ```python
+   # Test model-level validation
+   with pytest.raises(IntegrityError, match="Version number cannot be negative"):
+       ProjectVersion(version_number=-1, ...)
+
+   # Test database constraints
+   with pytest.raises(IntegrityError):
+       # Attempt to violate unique constraint
+       test_db.add(duplicate_version)
+       test_db.commit()
+   ```
 
 ## Best Practices
 
@@ -172,3 +204,10 @@ The system uses a consistent pattern for version responses that includes associa
    - Implement proper constraints
    - Maintain referential integrity
    - Optimize query patterns
+
+4. Validation Strategy:
+   - Implement validation at multiple layers
+   - Use model-level validation for early error catching
+   - Add database constraints as safety net
+   - Provide clear error messages
+   - Handle edge cases explicitly
