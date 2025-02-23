@@ -1,5 +1,7 @@
 from fastapi.testclient import TestClient
 from app.models.project import ProjectVersion, File
+from sqlalchemy.exc import IntegrityError
+import pytest
 
 def test_get_specific_version_with_files(client: TestClient, test_project, test_db, test_files):
     """Test getting a specific version with parent version number and files."""
@@ -101,3 +103,70 @@ def test_get_project_with_versions_and_files(client: TestClient, test_project, t
     assert version_data["parent_version"] is None
     assert "files" in version_data
     assert isinstance(version_data["files"], list)
+
+def test_empty_file_path_validation(client: TestClient, test_project, test_db):
+    """Test that empty file paths are rejected."""
+    # Create project and version
+    project_response = client.post("/api/projects/", json=test_project)
+    project_id = project_response.json()["id"]
+    version_id = client.get(f"/api/projects/{project_id}/versions").json()[0]["id"]
+    
+    # Test empty path
+    with pytest.raises(ValueError) as exc_info:
+        File(
+            project_version_id=version_id,
+            path="",
+            content="test content"
+        )
+    assert str(exc_info.value) == "File path cannot be empty"
+
+def test_duplicate_file_paths(client: TestClient, test_project, test_db):
+    """Test that duplicate file paths in the same version are rejected."""
+    # Create project and version
+    project_response = client.post("/api/projects/", json=test_project)
+    project_id = project_response.json()["id"]
+    version_id = client.get(f"/api/projects/{project_id}/versions").json()[0]["id"]
+    
+    # Create first file
+    file1 = File(
+        project_version_id=version_id,
+        path="/test.txt",
+        content="content 1"
+    )
+    test_db.add(file1)
+    test_db.commit()
+    
+    # Attempt to create second file with same path
+    file2 = File(
+        project_version_id=version_id,
+        path="/test.txt",  # Same path
+        content="content 2"
+    )
+    test_db.add(file2)
+    with pytest.raises(IntegrityError) as exc_info:
+        test_db.commit()
+    assert "unique_project_version_path" in str(exc_info.value)
+    test_db.rollback()
+
+def test_file_content_limits(client: TestClient, test_project, test_db):
+    """Test handling of file content up to 1MB."""
+    # Create project and version
+    project_response = client.post("/api/projects/", json=test_project)
+    project_id = project_response.json()["id"]
+    version_id = client.get(f"/api/projects/{project_id}/versions").json()[0]["id"]
+    
+    # Test 1MB file content
+    content = "x" * (1 * 1024 * 1024)  # 1MB
+    file = File(
+        project_version_id=version_id,
+        path="/large.txt",
+        content=content
+    )
+    test_db.add(file)
+    test_db.commit()
+    
+    # Verify content was stored correctly
+    response = client.get(f"/api/projects/{project_id}/versions/0")
+    assert response.status_code == 200
+    stored_file = next(f for f in response.json()["files"] if f["path"] == "/large.txt")
+    assert len(stored_file["content"]) == len(content)

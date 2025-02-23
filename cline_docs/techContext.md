@@ -34,6 +34,28 @@
 -   **httpx:** `httpx`
 -   **python-dotenv:** `python-dotenv`
 
+## Validation Constraints
+
+### File Path Validation
+1. Application Level:
+   - Empty paths rejected in File model's __init__
+   - Raises ValueError with message "File path cannot be empty"
+   - Prevents invalid data from reaching database
+   - Implemented in SQLAlchemy model for immediate validation
+
+2. Database Level:
+   - CHECK constraint: `length(path) > 0`
+   - UNIQUE constraint on (project_version_id, path)
+   - Enforces path uniqueness within versions
+   - Allows same path across different versions
+   - Implemented in both SQLAlchemy model and database schema
+
+### Version Number Validation
+- Non-negative integers only (>= 0)
+- Unique within each project
+- Version 0 reserved for initial version
+- Enforced by database constraints
+
 ## Resolved Issues
 
 -   The project was initially set up with asynchronous SQLAlchemy (asyncpg) and FastAPI endpoints, which caused compatibility issues with the synchronous `TestClient` used in the tests.

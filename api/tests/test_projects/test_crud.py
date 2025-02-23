@@ -69,3 +69,21 @@ def test_delete_project(client: TestClient, test_project):
     assert get_response.status_code == 200
     get_data = get_response.json()
     assert get_data["active"] == False
+
+def test_version_access_deleted_project(client: TestClient, test_project):
+    """Test version access for deleted projects."""
+    # Create project
+    response = client.post("/api/projects/", json=test_project)
+    project_id = response.json()["id"]
+    
+    # Delete project
+    client.delete(f"/api/projects/{project_id}")
+    
+    # Verify version list still accessible but project inactive
+    versions_response = client.get(f"/api/projects/{project_id}/versions")
+    assert versions_response.status_code == 200
+    
+    # Verify project is marked as inactive
+    project_response = client.get(f"/api/projects/{project_id}")
+    assert project_response.status_code == 200
+    assert project_response.json()["active"] == False

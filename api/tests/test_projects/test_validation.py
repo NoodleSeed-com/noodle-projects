@@ -72,3 +72,28 @@ def test_version_number_uniqueness(client: TestClient, test_project, test_db):
     with pytest.raises(IntegrityError):
         test_db.commit()
     test_db.rollback()
+
+def test_version_not_found(client: TestClient, test_project):
+    """Test 404 response for non-existent version number."""
+    # Create project
+    response = client.post("/api/projects/", json=test_project)
+    project_id = response.json()["id"]
+    
+    # Try to access non-existent version number
+    response = client.get(f"/api/projects/{project_id}/versions/999")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Version not found"
+
+def test_invalid_version_number_format(client: TestClient, test_project):
+    """Test validation of version number path parameter."""
+    # Create project
+    response = client.post("/api/projects/", json=test_project)
+    project_id = response.json()["id"]
+    
+    # Test negative numbers
+    response = client.get(f"/api/projects/{project_id}/versions/-1")
+    assert response.status_code == 422
+    
+    # Test non-integer values
+    response = client.get(f"/api/projects/{project_id}/versions/abc")
+    assert response.status_code == 422

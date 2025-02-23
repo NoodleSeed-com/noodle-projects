@@ -47,6 +47,13 @@
 - Empty files array ([]) returned for versions with no files
 - Files are included in version responses but not in version list responses
 
+### File Validation Rules
+- Empty paths are rejected at application level with ValueError
+- File paths must be unique within a version (enforced by database constraint)
+- Duplicate paths are allowed across different versions
+- Path validation occurs before database operations
+- Database constraints provide additional safety layer
+
 ### Database
 - Use UUID primary keys
 - Enable Row Level Security

@@ -24,9 +24,19 @@ The system uses a consistent pattern for version responses that includes associa
    - Each file belongs to exactly one version
    - Files are stored with:
      * Unique UUID
-     * Relative path
+     * Relative path (non-empty, unique per version)
      * Content
      * Version association
+
+2. File Validation:
+   - Application-level validation:
+     * Empty paths rejected with ValueError
+     * Validation occurs in File model __init__
+     * Prevents invalid data from reaching database
+   - Database-level constraints:
+     * Unique constraint on (project_version_id, path)
+     * Check constraint ensures non-empty paths
+     * Provides additional safety layer
 
 2. Loading Strategy:
    - Eager loading with versions

@@ -51,7 +51,8 @@ CREATE TABLE files (
     content text NOT NULL,
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
-    CONSTRAINT unique_project_version_path UNIQUE (project_version_id, path)
+    CONSTRAINT unique_project_version_path UNIQUE (project_version_id, path),
+    CONSTRAINT ck_file_path_not_empty CHECK (length(path) > 0)
 );
 
 -- Add index for faster lookups by project version

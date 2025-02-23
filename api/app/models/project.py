@@ -110,6 +110,16 @@ class File(Base):
         onupdate=func.now()
     )
     
+    __table_args__ = (
+        CheckConstraint("length(path) > 0", name="ck_file_path_not_empty"),
+        UniqueConstraint('project_version_id', 'path', name='unique_project_version_path'),
+    )
+    
+    def __init__(self, **kwargs):
+        if 'path' in kwargs and not kwargs['path']:
+            raise ValueError("File path cannot be empty")
+        super().__init__(**kwargs)
+    
     # Relationships
     version: Mapped["ProjectVersion"] = relationship(back_populates="files")
 
