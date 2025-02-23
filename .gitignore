@@ -19,6 +19,8 @@ htmlcov/
 *.egg-info/
 dist/
 build/
+*.pyc
+.python-version
 
 # IDE
 .idea/
@@ -26,14 +28,22 @@ build/
 *.swp
 *.swo
 .DS_Store
+*.sublime-project
+*.sublime-workspace
+.project
+.pydevproject
+.settings/
+.vs/
 
 # Logs
 *.log
 logs/
+log/
 
 # Database
 *.sqlite3
 *.db
+*.sql.gz
 
 # Test artifacts
 .coverage
@@ -41,6 +51,29 @@ coverage.xml
 nosetests.xml
 test-output/
 api/tests/test.env
+.pytest_cache/
+htmlcov/
+.hypothesis/
 
 # Documentation
 docs/_build/
+site/
+
+# Misc
+.cache/
+.env.local
+.env.*.local
+*.bak
+*.tmp
+*.temp
+.*.swp
+.*.swo
+*~
+
+# FastAPI specific
+__pycache__/
+*.pyc
+.env
+.venv/
+env/
+ENV/
