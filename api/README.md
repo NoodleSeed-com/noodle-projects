@@ -1,0 +1,200 @@
+# Projects API
+
+A FastAPI microservice for managing projects and their versions.
+
+## Setup
+
+1. Create a virtual environment and activate it:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows use: venv\Scripts\activate
+```
+
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+3. Set up environment variables:
+```bash
+cp .env.example .env
+# Edit .env with your database credentials
+```
+
+4. Run the development server:
+```bash
+uvicorn app.main:app --reload
+```
+
+## API Documentation
+
+Once the server is running, you can access:
+- Interactive API documentation (Swagger UI) at http://localhost:8000/docs
+- Alternative API documentation (ReDoc) at http://localhost:8000/redoc
+
+## API Endpoints
+
+### Projects
+
+- `GET /projects` - List all active projects
+- `POST /projects` - Create a new project
+- `GET /projects/{project_id}` - Get a specific project
+- `PUT /projects/{project_id}` - Update a project
+- `DELETE /projects/{project_id}` - Soft delete a project
+
+### Project Versions
+
+- `GET /projects/{project_id}/versions` - List all versions of a project
+- `GET /projects/{project_id}/versions/{version_number}` - Get a specific version
+
+## Database Schema
+
+The service uses three main tables:
+
+1. `projects` - Stores project metadata
+   - `id`: UUID (Primary Key)
+   - `name`: Text (Required)
+   - `description`: Text (Required, defaults to empty string)
+   - `latest_version_number`: Integer (Computed, returns highest version number)
+   - `active`: Boolean (Required, defaults to true)
+   - `created_at`: Timestamp with timezone
+   - `updated_at`: Timestamp with timezone
+
+2. `project_versions` - Stores project versions
+   - `id`: UUID (Primary Key)
+   - `project_id`: UUID (Foreign Key to projects, CASCADE on delete)
+   - `version_number`: Integer (Required, defaults to 0, unique per project)
+   - `parent_version_id`: UUID (Optional, Foreign Key to project_versions)
+   - `name`: Text (Required, defaults to empty string)
+   - `created_at`: Timestamp with timezone
+   - `updated_at`: Timestamp with timezone
+   - Constraints:
+     * UNIQUE(project_id, version_number)
+     * Index on (project_id, version_number) for faster lookups
+
+3. `files` - Stores files associated with project versions
+   - `id`: UUID (Primary Key)
+   - `project_version_id`: UUID (Foreign Key to project_versions)
+   - `path`: Text (Required)
+   - `content`: Text (Required)
+   - `created_at`: Timestamp with timezone
+   - `updated_at`: Timestamp with timezone
+
+## Entity Semantics
+
+The following diagram illustrates the relationships and structure of the system's components:
+
+```mermaid
+classDiagram
+    %% Base Classes
+    class Base {
+        <<abstract>>
+        +UUID id
+        +DateTime created_at
+        +DateTime updated_at
+    }
+    
+    class BaseSchema {
+        <<abstract>>
+        +from_attributes: bool
+        +json_schema_extra
+    }
+
+    %% Domain Models
+    class Project {
+        +String name
+        +Text description
+        +Boolean active
+        +List~ProjectVersion~ versions
+        +int latest_version_number() <<computed>>
+        note for Project "latest_version_number is a hybrid property that returns the highest version_number from the project's versions, or 0 if no versions exist"
+    }
+    
+    class ProjectVersion {
+        +UUID project_id
+        +int version_number
+        +UUID parent_version_id
+        +String name
+        +Project project
+        +List~File~ files
+        note for ProjectVersion "- Initial version (0) created with new project
+        - Parent-child relationship possible through parent_version_id
+        - Version numbers must be unique within a project (DB constraint)
+        - Implementation note: Version creation endpoint not implemented"
+    }
+    
+    class File {
+        +UUID project_version_id
+        +String path
+        +Text content
+        +ProjectVersion version
+    }
+
+    %% Pydantic Schemas
+    class ProjectBase {
+        +String name
+        +String description
+    }
+    
+    class ProjectCreate {
+    }
+    
+    class ProjectUpdate {
+        +Optional~String~ name
+        +Optional~String~ description
+        +Optional~Boolean~ active
+    }
+    
+    class ProjectResponse {
+        +UUID id
+        +int latest_version_number
+        +Boolean active
+        +DateTime created_at
+        +DateTime updated_at
+    }
+
+    %% CRUD Operations
+    class ProjectCRUD {
+        +get(Session, UUID) Project
+        +get_multi(Session, int, int) List~Project~
+        +create(Session, ProjectCreate) Project
+        +update(Session, UUID, ProjectUpdate) Project
+        +delete(Session, UUID) Project
+        +get_version(Session, UUID, int) ProjectVersion
+        +get_versions(Session, UUID, int, int) List~ProjectVersion~
+    }
+
+    %% API Endpoints
+    class ProjectAPI {
+        +listProjects() List~ProjectResponse~
+        +createProject() ProjectResponse
+        +getProject(id) ProjectResponse
+        +updateProject(id) ProjectResponse
+        +deleteProject(id) ProjectResponse
+        +listVersions(id) List~ProjectVersionResponse~
+        +getVersion(id, number) ProjectVersionResponse
+    }
+
+    %% Relationships
+    Base <|-- Project
+    Base <|-- ProjectVersion
+    Base <|-- File
+    BaseSchema <|-- ProjectBase
+    ProjectBase <|-- ProjectCreate
+    ProjectBase <|-- ProjectResponse
+    Project "1" --> "*" ProjectVersion : has
+    ProjectVersion "1" --> "*" File : contains
+    ProjectAPI --> ProjectCRUD : uses
+    ProjectCRUD --> Project : manages
+    ProjectCreate --> Project : creates
+    ProjectUpdate --> Project : updates
+    Project --> ProjectResponse : returns
+```
+
+The diagram shows:
+- Base classes (`Base` and `BaseSchema`) that provide common functionality
+- Domain models (`Project`, `ProjectVersion`, `File`) and their relationships
+- Pydantic schemas for validation and serialization
+- CRUD operations through the `ProjectCRUD` class
+- API endpoints that expose the functionality
+- Inheritance and association relationships between components

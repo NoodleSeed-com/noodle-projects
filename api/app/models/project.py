@@ -1,0 +1,155 @@
+"""
+Project models module combining SQLAlchemy and Pydantic models.
+"""
+from datetime import datetime
+from typing import Optional, List
+from uuid import UUID
+
+from sqlalchemy import String, Integer, Boolean, Text, ForeignKey, DateTime, func, UniqueConstraint, CheckConstraint
+from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy import select
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+from pydantic import Field
+
+from .base import Base, BaseSchema
+
+# SQLAlchemy Models
+class Project(Base):
+    """SQLAlchemy model for projects."""
+    __tablename__ = "projects"
+    
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    @hybrid_property
+    def latest_version_number(self) -> int:
+        if self.versions:
+            return max((version.version_number for version in self.versions), default=0)
+        return 0
+
+    @latest_version_number.expression
+    def latest_version_number(cls):
+        from .project import ProjectVersion
+        return (
+            select(func.max(ProjectVersion.version_number))
+            .where(ProjectVersion.project_id == cls.id)
+            .correlate(cls)
+            .scalar_subquery()
+        )
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now()
+    )
+    
+    # Relationships
+    versions: Mapped[List["ProjectVersion"]] = relationship(
+        back_populates="project",
+        cascade="all, delete-orphan"
+    )
+
+class ProjectVersion(Base):
+    """SQLAlchemy model for project versions."""
+    __tablename__ = "project_versions"
+    
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    version_number: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    parent_version_id: Mapped[Optional[UUID]] = mapped_column(
+        ForeignKey("project_versions.id"),
+        nullable=True
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now()
+    )
+    
+    __table_args__ = (
+        UniqueConstraint('project_id', 'version_number', name='uq_project_version'),
+        CheckConstraint('version_number >= 0', name='ck_version_number_positive'),
+    )
+    
+    # Relationships
+    project: Mapped["Project"] = relationship(back_populates="versions")
+    files: Mapped[List["File"]] = relationship(
+        back_populates="version",
+        cascade="all, delete-orphan"
+    )
+
+class File(Base):
+    """SQLAlchemy model for files."""
+    __tablename__ = "files"
+    
+    project_version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("project_versions.id", ondelete="CASCADE")
+    )
+    path: Mapped[str] = mapped_column(String, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now()
+    )
+    
+    # Relationships
+    version: Mapped["ProjectVersion"] = relationship(back_populates="files")
+
+# Pydantic Schemas
+class ProjectBase(BaseSchema):
+    """Base schema for project data."""
+    name: str = Field(..., description="The name of the project")
+    description: str = Field("", description="Project description")
+
+class ProjectCreate(ProjectBase):
+    """Schema for creating a new project."""
+    pass
+
+class ProjectUpdate(BaseSchema):
+    """Schema for updating a project."""
+    name: Optional[str] = Field(None, description="The name of the project")
+    description: Optional[str] = Field(None, description="Project description")
+    active: Optional[bool] = Field(None, description="Whether the project is active")
+
+class ProjectResponse(ProjectBase):
+    """Schema for project responses."""
+    id: UUID
+    latest_version_number: int = Field(..., description="Latest version number")
+    active: bool = Field(..., description="Whether the project is active")
+    created_at: datetime
+    updated_at: datetime
+
+class ProjectVersionBase(BaseSchema):
+    """Base schema for project version data."""
+    version_number: int = Field(..., description="Version number", ge=0)
+    name: str = Field("", description="Version name")
+    parent_version_id: Optional[UUID] = Field(None, description="Parent version ID")
+
+class ProjectVersionCreate(ProjectVersionBase):
+    """Schema for creating a new project version."""
+    pass
+
+class ProjectVersionResponse(ProjectVersionBase):
+    """Schema for project version responses."""
+    id: UUID
+    project_id: UUID
+    created_at: datetime
+    updated_at: datetime

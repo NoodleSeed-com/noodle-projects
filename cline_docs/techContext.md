@@ -1,64 +1,44 @@
 # Technical Context
 
 ## Technologies
-### Core
-- Supabase Platform
-- PostgreSQL Database
-- RESTful API
-- WebSocket (Real-time)
 
-### Development
-- Supabase CLI
-- Git Version Control
-- PostgreSQL Client
-- API Testing Tools
+-   **FastAPI:** Web framework for building the API.
+-   **SQLAlchemy:** Database toolkit and ORM.
+-   **PostgreSQL:** Relational database.
+-   **Pydantic:** Data validation and settings management.
+-   **pytest:** Testing framework.
+-   **httpx:** HTTP client (used by FastAPI's TestClient).
+-   **psycopg2-binary:** `psycopg2-binary` (for synchronous operations)
+-   **dotenv:** For loading environment variables.
 
 ## Development Setup
-1. Local Environment
-   - Supabase CLI installed
-   - PostgreSQL tools
-   - Development database
-   - API testing suite
 
-2. Configuration
-   - Environment variables
-   - Database connection
-   - Authentication setup
-   - API endpoints
+-   Python 3.11+
+-   Virtual environment (venv)
+-   Dependencies managed via `requirements.txt`
+-   Database connection configured via environment variables (`DATABASE_URL`, etc.)
+-   Test environment variables in `api/tests/test.env`
 
-## Technical Constraints
-- PostgreSQL version compatibility
-- API rate limits
-- Database connection limits
-- Real-time subscription limits
+## Technical Decisions
+
+-   The project has been switched to a fully synchronous approach for both the application and the tests.
+-   This simplifies the test setup and avoids compatibility issues between synchronous tests and asynchronous database operations.
 
 ## Dependencies
-### Required
-- Supabase CLI
-- PostgreSQL
-- Node.js (for API development)
-- Git
 
-### Optional
-- Database GUI tools
-- API documentation tools
-- Testing frameworks
-- Monitoring tools
+-   **FastAPI:** `fastapi`
+-   **SQLAlchemy:** `sqlalchemy`
+-   **psycopg2-binary:** `psycopg2-binary` (for synchronous operations)
+-   **Pydantic:** `pydantic`
+-   **pytest:** `pytest`
+-   **httpx:** `httpx`
+-   **python-dotenv:** `python-dotenv`
 
-## Development Tools
-```bash
-# Database Management
-psql
-pgadmin4
+## Resolved Issues
 
-# API Testing
-curl
-postman
+-   The project was initially set up with asynchronous SQLAlchemy (asyncpg) and FastAPI endpoints, which caused compatibility issues with the synchronous `TestClient` used in the tests.
+-   Switching to a fully synchronous approach has resolved these issues.
 
-# Version Control
-git
+## Potential Solutions (No Longer Needed)
 
-# CLI Tools
-supabase
-node
-npm
+-   ~~Fully Asynchronous Approach: Keep the application code asynchronous and modify the tests to use `pytest-asyncio` correctly, ensuring proper event loop management and using an async test client like `httpx.AsyncClient`. This might require more complex test setup.~~

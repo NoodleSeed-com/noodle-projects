@@ -1,4 +1,46 @@
+# Dependencies
 node_modules/
-.DS_Store
+venv/
 .env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
 *.log
+logs/
+
+# Database
+*.sqlite3
+*.db
+
+# Test artifacts
+.coverage
+coverage.xml
+nosetests.xml
+test-output/
+api/tests/test.env
+
+# Documentation
+docs/_build/

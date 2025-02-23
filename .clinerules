@@ -1,57 +1,255 @@
 # Project Configuration (.clinerules)
 
 ## Project Overview
-- Type: Supabase Project
+- Type: FastAPI Microservice
 - Created: 2024-02-22
 - Location: /Users/fahdrafi/VSCode/noodle-projects
 
 ## Development Standards
+
 ### Code Style
-- Follow Supabase best practices and conventions
-- Use consistent formatting and naming conventions
-- Document all database schema changes
+- Follow FastAPI and Pydantic v2 best practices
+- Use type hints throughout
+- Document all functions and classes
+- Follow PEP 8 guidelines
 
-### CLI Workflow
-- Use Supabase CLI for database operations
-- Follow command pattern: [noun] [verb]
-- Example: `supabase db push`
+### API Design
+- RESTful endpoints
+- Clear resource hierarchy
+- Consistent response formats
+- Proper status code usage
 
-### Security
-- Store sensitive data in .env files (not in version control)
-- Follow Supabase security best practices
-- Use Row Level Security (RLS) policies
-- Implement proper authentication flows
+### Database
+- Use UUID primary keys
+- Enable Row Level Security
+- Implement soft deletion
+- Maintain referential integrity
+- Use appropriate indexes
 
 ### Documentation
 - Maintain Memory Bank in cline_docs/
 - Document all schema changes
 - Keep API documentation up to date
-- Document security policies
+- Document design decisions
 
 ### Version Control
 - Use meaningful commit messages
-- Follow semantic versioning
 - Document breaking changes
+- Follow semantic versioning
+- Track version relationships
 
 ### Testing
-- Write tests for database functions
-- Test RLS policies
-- Validate schema migrations
+- Write unit tests for API endpoints
+- Test database operations
+- Validate schema constraints
+- Test error handling
+
+#### Test Structure
+```
+api/tests/
+├── __init__.py          # Make tests a package
+├── conftest.py          # Test configuration and fixtures
+├── test_*.py           # Test modules
+└── test.env            # Test environment variables
+```
+
+#### Test Configuration
+- Use separate test database in Supabase
+- Load test environment from test.env
+- Create fixtures for:
+  - Database engine
+  - Test database session
+  - FastAPI test client
+  - Test data
+
+#### Test Patterns
+1. Database Tests
+   - Create test database for each session
+   - Clean up after each test
+   - Use transactions for isolation
+   - Test CRUD operations
+
+2. API Tests
+   - Test all endpoints
+   - Verify response codes
+   - Validate response data
+   - Test error cases
+
+3. Naming Conventions
+   - Test files: test_*.py
+   - Test functions: test_*
+   - Fixtures: descriptive names
+
+4. Best Practices
+   - One assertion per test when possible
+   - Use fixtures for setup/teardown
+   - Mock external services
+   - Test edge cases
+   - Maintain test isolation
+
+#### Test Commands
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=app tests/
+
+# Run specific test
+pytest tests/test_specific.py
+
+# Run with verbose output
+pytest -v
+```
+
+#### Coverage Requirements
+- Minimum 80% overall coverage
+- 100% coverage for models
+- 100% coverage for critical paths
+- Track coverage in CI/CD
 
 ## Project Dependencies
-- Supabase CLI
-- PostgreSQL knowledge
-- Database design principles
+- Python 3.11+
+- FastAPI
+- SQLAlchemy
+- Pydantic v2
+- PostgreSQL
+- Supabase
 
 ## Best Practices
-- Use migrations for schema changes
-- Implement proper error handling
-- Follow PostgreSQL best practices
-- Use prepared statements
-- Implement proper backups
 
-## Security Guidelines
-- Never commit sensitive data
+### API Implementation
+- Implement proper validation
+- Handle errors consistently
+- Use dependency injection
+
+### Database Operations
+- Use connection pooling
+- Implement transactions
+- Handle concurrent access
+- Optimize queries
+
+### Security Guidelines
+- Validate all inputs
 - Use environment variables
 - Implement proper access controls
 - Regular security audits
+
+### Error Handling
+- Use appropriate status codes
+- Provide clear error messages
+- Log errors properly
+- Handle edge cases
+
+## CLI Commands
+
+### Development Server
+```bash
+# Start development server
+uvicorn api.app.main:app --reload
+
+# Run with specific host/port
+uvicorn api.app.main:app --host 0.0.0.0 --port 8000
+```
+
+### Database
+```bash
+# Apply migrations
+supabase db reset
+
+# Start Supabase
+supabase start
+
+# Stop Supabase
+supabase stop
+```
+
+### Testing
+
+- **Consistency is Key:** Ensure that your application code and test code are both synchronous.
+- **Test Database:** Use a separate database for testing to avoid interfering with development or production data. Configure the test database URL in a separate environment file (e.g., `api/tests/test.env`).
+- **Fixtures:** Use pytest fixtures (`conftest.py`) to manage test setup (e.g., creating database tables) and teardown (e.g., dropping tables).  Use appropriate fixture scopes (e.g., `session` or `module`) to control when fixtures are executed.
+- **FastAPI TestClient:** Use FastAPI's `TestClient` for making requests to your API endpoints in tests.
+- **Example (Synchronous):**
+  ```python
+  # conftest.py
+  import pytest
+  from fastapi.testclient import TestClient
+  from sqlalchemy import create_engine
+  from sqlalchemy.orm import sessionmaker
+  from app.main import app
+  from app.config import get_db, settings
+  from app.models.base import Base
+
+  @pytest.fixture(scope="session")
+  def test_engine():
+      db_url = str(settings.DATABASE_URL).replace("+asyncpg", "") # Make sure it is sync
+      engine = create_engine(db_url, echo=True)
+      return engine
+
+  @pytest.fixture(scope="module")
+  def test_db(test_engine):
+      Base.metadata.drop_all(bind=test_engine)
+      Base.metadata.create_all(bind=test_engine)
+      TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
+      db = TestingSessionLocal()
+      yield db
+      db.close()
+      Base.metadata.drop_all(bind=test_engine)
+
+  @pytest.fixture(scope="module")
+  def client(test_db):
+      def override_get_db():
+          return test_db
+
+      app.dependency_overrides[get_db] = override_get_db
+      with TestClient(app) as c:
+          yield c
+      app.dependency_overrides.clear()
+  ```
+
+### Environment
+```bash
+# Create virtual environment
+python -m venv venv
+
+# Activate virtual environment
+source venv/bin/activate  # Unix
+venv\Scripts\activate     # Windows
+
+# Install dependencies
+pip install -r api/requirements.txt
+```
+
+## Project Structure
+```
+/
+├── api/                      # FastAPI service
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── config.py        # App & DB configuration
+│   │   ├── main.py          # FastAPI app setup
+│   │   ├── projects.py      # API endpoints
+│   │   ├── crud.py          # Database operations
+│   │   └── models/
+│   │       ├── base.py      # Base model classes
+│   │       └── project.py   # Project models
+│   ├── requirements.txt
+│   └── README.md
+├── supabase/
+│   ├── seed.sql             # DB schema
+│   └── config.toml
+└── cline_docs/              # Documentation
+    ├── projectbrief.md
+    ├── systemPatterns.md
+    ├── techContext.md
+    ├── productContext.md
+    ├── activeContext.md
+    ├── progress.md
+    └── research.md
+```
+
+## Environment Variables
+Required in api/.env:
+```
+DATABASE_URL=postgresql://[user]:[password]@[host]:[port]/[database]

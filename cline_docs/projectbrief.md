@@ -1,32 +1,60 @@
-# Project Brief
+# Project Brief: Projects API Microservice
 
 ## Overview
-This project utilizes Supabase as its backend infrastructure. The project is initialized with basic configuration and will be expanded based on specific requirements.
+A FastAPI-based microservice for managing projects and their versions, with a focus on version control and file management through a RESTful API interface.
 
 ## Core Requirements
-1. Database Infrastructure
-   - Scalable PostgreSQL database
-   - Proper schema design
-   - Data security and integrity
 
-2. Authentication & Authorization
-   - User management
-   - Role-based access control
-   - Secure authentication flows
+### Project Management
+- [x] Create, read, update, and soft-delete projects
+- [x] Track project metadata (name, description)
+- [x] Maintain project status (active/inactive)
+- [x] Track latest version number
 
-3. API Development
-   - RESTful endpoints
-   - Real-time subscriptions
-   - API documentation
+### Version Control
+- [x] Automatic version numbering
+- [x] Parent-child version relationships
+- [x] Version naming support
+- [x] No explicit version creation endpoint
 
-## Technical Goals
-- Build a robust database architecture
-- Implement secure data access patterns
-- Create efficient API endpoints
-- Ensure scalability and performance
+### File Management
+- [x] Store files associated with versions
+- [x] Enforce unique file paths within versions
+- [x] No direct file manipulation endpoints
+- [x] Maintain file content and metadata
 
-## Success Criteria
-- Secure and efficient database operations
-- Well-documented API endpoints
-- Proper error handling
-- Comprehensive testing coverage
+## Technical Specifications
+
+### API Design
+- [x] RESTful endpoints
+- [x] Proper error handling
+- [x] Input validation
+- [x] Pagination support
+
+### Database Schema
+- [x] UUID primary keys
+- [x] Timestamp tracking
+- [x] Soft deletion
+- [x] Foreign key constraints
+- [x] Optimized indexes
+- [x] Unique constraints
+
+### Implementation
+- [x] FastAPI framework
+- [x] SQLAlchemy ORM
+- [x] Pydantic models
+- [x] Environment-based configuration
+
+## Documentation
+- [x] API documentation (OpenAPI/Swagger)
+- [x] Setup instructions
+- [x] Database schema documentation
+- [x] Code documentation
+- [x] Memory Bank documentation
+
+## Future Scope
+- [ ] Batch operations
+- [ ] Advanced version querying
+- [ ] Search capabilities
+- [ ] Additional metadata fields
+- [ ] Performance monitoring

@@ -1,36 +1,38 @@
 # Active Context
 
 ## Current Focus
-- Project initialization
-- Basic configuration setup
-- Infrastructure preparation
+
+- Validating and documenting version number semantics in the FastAPI application.
+- Ensuring proper constraints and validation at both database and API levels.
+- Maintaining comprehensive documentation of system patterns.
 
 ## Recent Changes
-- Created project structure
-- Initialized .clinerules
-- Set up Memory Bank
-- Created Supabase configuration
+
+- Added CHECK constraint to enforce non-negative version numbers.
+- Added UNIQUE constraint to prevent duplicate version numbers within projects.
+- Added comprehensive tests for version number semantics:
+  - Version number uniqueness
+  - Version number validation
+  - Version ordering
+  - Parent-child relationships
+  - Version persistence after project soft deletion
+- Updated systemPatterns.md with detailed version number semantics documentation.
 
 ## Next Steps
-1. Configure Supabase project
-2. Set up database schema
-3. Implement authentication
-4. Create initial API endpoints
 
-## Active Decisions
-- Using Supabase for backend infrastructure
-- Following PostgreSQL best practices
-- Implementing security-first approach
+- Consider implementing an endpoint for creating new versions.
+- Consider adding validation for parent-child relationship integrity.
+- Consider adding version number sequence validation if needed.
 
-## Current CLI Operations
-```bash
-# Project initialization
-supabase init
+## Active Decisions and Considerations
 
-# Local development
-supabase start
-supabase db reset
+- Version numbers must be unique within a project but can be reused across projects.
+- Version numbers persist when a project is soft-deleted (preserving history).
+- Version numbers do not need to be sequential (gaps allowed).
+- Parent-child relationships are supported through parent_version_id.
+- All version number validation tests are now passing.
 
-# Database migrations
-supabase db push
-supabase db pull
+## Current CLI Operations and Workflows
+
+- Running tests: `cd api && python -m pytest tests/test_projects.py -v`
+- All tests passing, including new version number semantics tests.
