@@ -12,7 +12,8 @@ from .models.project import (
     ProjectCreate,
     ProjectUpdate,
     ProjectResponse,
-    ProjectVersionResponse
+    ProjectVersionResponse,
+    ProjectVersionListItem
 )
 
 router = APIRouter()
@@ -68,14 +69,22 @@ def delete_project(
         raise HTTPException(status_code=404, detail="Project not found")
     return project
 
-@router.get("/{project_id}/versions", response_model=List[ProjectVersionResponse])
+@router.get("/{project_id}/versions", response_model=List[ProjectVersionListItem])
 def list_project_versions(
     project_id: UUID,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db)
 ):
-    """List all versions of a project."""
+    """List all versions of a project.
+    
+    Returns a simplified list of versions containing:
+    - id: UUID of the version
+    - version_number: Sequential version number
+    - name: Version name
+    
+    Versions are ordered by version_number.
+    """
     project = crud.get(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
@@ -90,7 +99,13 @@ def get_project_version(
     version_number: int = Path(..., ge=0),
     db: Session = Depends(get_db)
 ):
-    """Get a specific version of a project."""
+    """Get a specific version of a project.
+    
+    Returns full version details including:
+    - All standard version fields (id, project_id, version_number, name, etc.)
+    - parent_version: The version number of the parent version (if any)
+    - parent_version_id: The UUID of the parent version (maintained for compatibility)
+    """
     project = crud.get(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")

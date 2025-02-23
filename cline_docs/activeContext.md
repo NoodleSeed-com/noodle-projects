@@ -1,38 +1,62 @@
 # Active Context
 
-## Current Focus
+## Current Work Focus
 
-- Validating and documenting version number semantics in the FastAPI application.
-- Ensuring proper constraints and validation at both database and API levels.
-- Maintaining comprehensive documentation of system patterns.
+### File Support in Project Versions
+- Implemented file storage and retrieval in project versions
+- Added file response DTOs and updated version responses
+- Implemented eager loading to prevent N+1 queries
+- Added comprehensive tests for file functionality
 
 ## Recent Changes
 
-- Added CHECK constraint to enforce non-negative version numbers.
-- Added UNIQUE constraint to prevent duplicate version numbers within projects.
-- Added comprehensive tests for version number semantics:
-  - Version number uniqueness
-  - Version number validation
-  - Version ordering
-  - Parent-child relationships
-  - Version persistence after project soft deletion
-- Updated systemPatterns.md with detailed version number semantics documentation.
+1. API Response Structure:
+   - Added files array to version responses
+   - Implemented FileResponse DTO
+   - Updated ProjectVersionResponse to include files
+
+2. Database Operations:
+   - Using eager loading for file relationships
+   - Maintaining proper cascade relationships
+   - Ensuring data integrity with constraints
+
+3. Testing:
+   - Reorganized tests into focused categories:
+     * CRUD operations (test_crud.py)
+     * Input validation (test_validation.py)
+     * Version management (test_versions.py)
+     * File handling (test_files.py)
+   - Centralized fixtures in conftest.py
+   - Maintained 93% test coverage
+   - All 17 tests passing
+
+## Active Decisions
+
+1. File Storage:
+   - Files are immutable per version
+   - Files are always associated with versions
+   - File paths are relative to project root
+
+2. Response Structure:
+   - Detailed responses include full file content
+   - List responses exclude files for efficiency
+   - Using DTOs to maintain clean separation
 
 ## Next Steps
 
-- Consider implementing an endpoint for creating new versions.
-- Consider adding validation for parent-child relationship integrity.
-- Consider adding version number sequence validation if needed.
+1. Potential Improvements:
+   - Add file content validation
+   - Implement file type detection
+   - Add file size limits
+   - Consider file content compression
 
-## Active Decisions and Considerations
+2. Future Considerations:
+   - File diff functionality between versions
+   - File metadata support
+   - Binary file handling
+   - Large file optimization
 
-- Version numbers must be unique within a project but can be reused across projects.
-- Version numbers persist when a project is soft-deleted (preserving history).
-- Version numbers do not need to be sequential (gaps allowed).
-- Parent-child relationships are supported through parent_version_id.
-- All version number validation tests are now passing.
-
-## Current CLI Operations and Workflows
-
-- Running tests: `cd api && python -m pytest tests/test_projects.py -v`
-- All tests passing, including new version number semantics tests.
+## Current CLI Operations
+- Tests run with: `cd api && pytest tests/test_projects/ -v`
+- Coverage check: `pytest --cov=api/app api/tests/ -v`
+- All tests passing with 93% coverage

@@ -45,7 +45,11 @@ Once the server is running, you can access:
 ### Project Versions
 
 - `GET /projects/{project_id}/versions` - List all versions of a project
+  - Returns a simplified list of versions with {id, version_number, name}
+  - Versions are ordered by version_number
 - `GET /projects/{project_id}/versions/{version_number}` - Get a specific version
+  - Returns full version details including parent_version (the parent's version number)
+  - Maintains parent_version_id for backward compatibility
 
 ## Database Schema
 
@@ -118,7 +122,8 @@ classDiagram
         +Project project
         +List~File~ files
         note for ProjectVersion "- Initial version (0) created with new project
-        - Parent-child relationship possible through parent_version_id
+        - Parent-child relationship tracked by parent_version_id internally
+        - Parent version number exposed in API responses
         - Version numbers must be unique within a project (DB constraint)
         - Implementation note: Version creation endpoint not implemented"
     }

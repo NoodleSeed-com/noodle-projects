@@ -145,11 +145,36 @@ class ProjectVersionBase(BaseSchema):
 
 class ProjectVersionCreate(ProjectVersionBase):
     """Schema for creating a new project version."""
-    pass
+    project_id: UUID
+    name: str = Field(default="", description="Version name")
+    parent_version_id: Optional[UUID] = Field(None, description="Parent version ID")
+
+class ProjectVersionListItem(BaseSchema):
+    """Schema for project version list items.
+    
+    Used for the simplified list response when listing all versions of a project.
+    Contains only essential identifying information.
+    """
+    id: UUID = Field(..., description="Version ID")
+    version_number: int = Field(..., description="Sequential version number", ge=0)
+    name: str = Field(..., description="Version name")
+
+class FileResponse(BaseSchema):
+    """Schema for file responses."""
+    id: UUID = Field(..., description="File ID")
+    path: str = Field(..., description="File path")
+    content: str = Field(..., description="File content")
 
 class ProjectVersionResponse(ProjectVersionBase):
-    """Schema for project version responses."""
+    """Schema for project version responses.
+    
+    Used for detailed version information when retrieving a specific version.
+    Includes all version fields plus the parent's version number for easier traversal
+    of the version history tree.
+    """
     id: UUID
     project_id: UUID
+    parent_version: Optional[int] = Field(None, description="The version number of the parent version (if any)")
     created_at: datetime
     updated_at: datetime
+    files: List[FileResponse] = Field(default_factory=list, description="List of files associated with this version")

@@ -19,6 +19,34 @@
 - Consistent response formats
 - Proper status code usage
 
+#### Version Response Structure
+```json
+{
+  "id": "uuid",
+  "project_id": "uuid",
+  "version_number": 0,
+  "name": "string",
+  "parent_version_id": "uuid",
+  "parent_version": 0,
+  "created_at": "datetime",
+  "updated_at": "datetime",
+  "files": [
+    {
+      "id": "uuid",
+      "path": "string",
+      "content": "string"
+    }
+  ]
+}
+```
+
+#### File Handling Patterns
+- Files are always associated with specific versions
+- Files are eagerly loaded with versions to prevent N+1 queries
+- File paths must be relative to project root
+- Empty files array ([]) returned for versions with no files
+- Files are included in version responses but not in version list responses
+
 ### Database
 - Use UUID primary keys
 - Enable Row Level Security
@@ -26,11 +54,28 @@
 - Maintain referential integrity
 - Use appropriate indexes
 
+#### Database Relationships
+- Project -> ProjectVersion: One-to-Many
+  - Cascade delete from project to versions
+  - Unique version numbers per project
+  - Version 0 is always initial version
+- ProjectVersion -> File: One-to-Many
+  - Cascade delete from version to files
+  - Files belong to exactly one version
+  - No file versioning (files are immutable per version)
+
 ### Documentation
 - Maintain Memory Bank in cline_docs/
 - Document all schema changes
 - Keep API documentation up to date
 - Document design decisions
+
+#### Response Patterns
+- Use Pydantic models for all responses
+- Keep SQLAlchemy models separate from response DTOs
+- Include complete object graphs in detailed responses
+- Use simplified responses for list endpoints
+- Document all response fields and their types
 
 ### Version Control
 - Use meaningful commit messages
@@ -48,9 +93,14 @@
 ```
 api/tests/
 ├── __init__.py          # Make tests a package
-├── conftest.py          # Test configuration and fixtures
-├── test_*.py           # Test modules
-└── test.env            # Test environment variables
+├── conftest.py          # Global test configuration
+├── test.env            # Test environment variables
+└── test_projects/      # Project-related tests
+    ├── conftest.py     # Shared project test fixtures
+    ├── test_crud.py    # CRUD operation tests
+    ├── test_validation.py  # Input validation tests
+    ├── test_versions.py   # Version management tests
+    └── test_files.py     # File handling tests
 ```
 
 #### Test Configuration
@@ -93,13 +143,16 @@ api/tests/
 pytest
 
 # Run with coverage
-pytest --cov=app tests/
+pytest --cov=api/app api/tests/ -v
 
-# Run specific test
-pytest tests/test_specific.py
+# Run specific test category
+pytest api/tests/test_projects/test_crud.py -v
+pytest api/tests/test_projects/test_validation.py -v
+pytest api/tests/test_projects/test_versions.py -v
+pytest api/tests/test_projects/test_files.py -v
 
-# Run with verbose output
-pytest -v
+# Run all project tests
+pytest api/tests/test_projects/ -v
 ```
 
 #### Coverage Requirements
