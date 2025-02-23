@@ -390,7 +390,19 @@ pip install -r api/requirements.txt
 ```
 
 ### OpenRouter Service Standards
-1. Response Format:
+
+1. Prompt Management:
+   - Store prompts in separate markdown files:
+     ```
+     api/app/services/prompts/
+     ├── system_message.md      # AI role and behavior
+     └── user_message_template.md  # Request format
+     ```
+   - Load prompts with error handling
+   - Keep prompts version controlled
+   - Document prompt structure and placeholders
+
+2. Response Format:
    - All AI responses must be wrapped in `<noodle_response>` tags
    - JSON structure must follow:
      ```json
@@ -405,23 +417,81 @@ pip install -r api/requirements.txt
    - File paths must be relative to project root
    - Content must be properly escaped in JSON
 
-2. Model Configuration:
+3. Model Configuration:
    - Use google/gemini-2.0-flash-001 for code generation
    - Configure system prompt for consistent response format
    - Include project context and current files in requests
    - Validate responses through Pydantic models
 
-3. Error Handling:
-   - Validate presence of noodle_response tags
-   - Verify JSON structure through model validation
-   - Handle missing API keys gracefully
-   - Provide clear error messages for invalid responses
+4. Validation Requirements:
+   a. Response Format:
+      - Validate presence of noodle_response tags
+      - Parse and validate JSON structure
+      - Verify required fields in changes
+      - Check operation type validity
 
-4. Testing Requirements:
-   - Test response format validation
-   - Verify error handling for invalid responses
-   - Mock service in test environment
-   - Test with actual API in development
+   b. File Path Validation:
+      - Ensure paths are unique within changes
+      - Validate path format and structure
+      - Check for empty or invalid paths
+      - Handle special characters properly
+
+   c. Content Validation:
+      - Verify content is provided when required
+      - Handle large file content appropriately
+      - Validate content format if specified
+      - Check for content size limits
+
+5. Error Handling:
+   a. Network Errors:
+      - Handle OpenAIError with clear messages
+      - Manage APITimeoutError with retry info
+      - Handle RateLimitError with backoff guidance
+      - Log errors with appropriate context
+
+   b. Response Errors:
+      - Raise ValueError for invalid responses
+      - Use AttributeError for missing fields
+      - Handle IndexError for empty responses
+      - Provide debugging context in errors
+
+   c. Validation Errors:
+      - Clear messages for duplicate paths
+      - Descriptive errors for invalid operations
+      - Context-rich validation failures
+      - Actionable error messages
+
+6. Testing Requirements:
+   a. Coverage Standards:
+      - Maintain 95%+ service coverage
+      - Test all error conditions
+      - Verify edge cases
+      - Test with real API in development
+
+   b. Test Categories:
+      - Basic functionality (testing mode, API key)
+      - Response validation (tags, JSON)
+      - Error handling (API, timeouts, limits)
+      - Edge cases (empty, special chars)
+      - File validation (duplicates, paths)
+
+   c. Mock Patterns:
+      ```python
+      # Mock service for testing
+      @pytest.fixture
+      def mock_openrouter():
+          with patch('app.services.openrouter.OpenRouterService._get_client') as mock:
+              mock_client = MagicMock()
+              mock.return_value = mock_client
+              yield mock_client
+      ```
+
+7. Environment Configuration:
+   ```python
+   # Required environment variables
+   OPENROUTER_API_KEY=[key]  # API authentication
+   TESTING=true|false        # Test mode control
+   ```
 
 ## Environment Variables
 Required in api/.env:

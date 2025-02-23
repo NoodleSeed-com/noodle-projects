@@ -137,9 +137,11 @@ class File(Base):
     version: Mapped["ProjectVersion"] = relationship(back_populates="files")
 
 # Pydantic Schemas
+from pydantic import Field, constr
+
 class ProjectBase(BaseSchema):
     """Base schema for project data."""
-    name: str = Field(..., description="The name of the project")
+    name: constr(min_length=1) = Field(..., description="The name of the project")
     description: str = Field("", description="Project description")
 
 class ProjectCreate(ProjectBase):

@@ -1,5 +1,20 @@
 # System Patterns
 
+## Validation Patterns
+
+### Project Model Validation
+- Project names must be non-empty (enforced via Pydantic constr(min_length=1))
+- Description is optional with default empty string
+- Version numbers must be non-negative (enforced via database CHECK constraint)
+- File paths must be non-empty and unique within a version
+
+### Integration Test Patterns
+- Test both API endpoints and direct CRUD operations
+- Verify template initialization in version 0
+- Validate input constraints at API level
+- Test file path uniqueness and content matching
+- Mock external services (e.g., OpenRouter) for version creation
+
 ## API Response Patterns
 
 ### Version Response Pattern
@@ -261,8 +276,20 @@ The system uses a consistent pattern for version responses that includes associa
 
 ## Service Integration Patterns
 
-### OpenRouter Response Pattern
-1. Response Format:
+### OpenRouter Service Patterns
+
+1. Prompt Management:
+   - Separate files for system and user prompts
+   - Located in services/prompts directory:
+     ```
+     api/app/services/prompts/
+     ├── system_message.md    # AI role and response format
+     └── user_message_template.md  # Request template
+     ```
+   - Allows easy maintenance and updates
+   - Keeps prompts version controlled
+
+2. Response Format:
    ```json
    <noodle_response>
    {
@@ -275,7 +302,7 @@ The system uses a consistent pattern for version responses that includes associa
    </noodle_response>
    ```
 
-2. Model Configuration:
+3. Model Configuration:
    ```python
    # models/project.py
    class FileChange(BaseModel):
@@ -287,34 +314,102 @@ The system uses a consistent pattern for version responses that includes associa
        changes: List[FileChange]
    ```
 
-3. Response Validation:
-   ```python
-   # Extract response between tags
-   match = re.search(r"<noodle_response>\s*(.*?)\s*</noodle_response>", 
-                    response_text, re.DOTALL)
-   if not match:
-       raise ValueError("AI response missing noodle_response tags")
-   
-   # Parse and validate changes
-   ai_response = AIResponse.model_validate_json(match.group(1))
-   ```
+4. Validation Layers:
+   a. Response Format Validation:
+      ```python
+      # Extract and validate response tags
+      match = re.search(r"<noodle_response>\s*(.*?)\s*</noodle_response>", 
+                       response_text, re.DOTALL)
+      if not match:
+          raise ValueError("AI response missing noodle_response tags")
+      ```
 
-4. Model Selection:
+   b. JSON Structure Validation:
+      ```python
+      # Parse and validate with Pydantic
+      ai_response = AIResponse.model_validate_json(match.group(1))
+      ```
+
+   c. File Path Validation:
+      ```python
+      # Check for duplicate paths
+      paths = [change.path for change in ai_response.changes]
+      if len(paths) != len(set(paths)):
+          raise ValueError("Duplicate file paths found in changes")
+      ```
+
+5. Error Handling:
+   a. Network Errors:
+      - OpenAIError: General API errors
+      - APITimeoutError: Request timeouts
+      - RateLimitError: Rate limit exceeded
+
+   b. Response Errors:
+      - ValueError: Missing tags, invalid JSON, duplicate paths
+      - AttributeError: Missing required attributes
+      - IndexError: Empty response
+
+   c. Testing Pattern:
+      ```python
+      def test_error_handling():
+          # Test rate limit
+          mock_response = MagicMock(status_code=429)
+          error_body = {
+              "error": {
+                  "message": "Rate limit exceeded",
+                  "type": "requests",
+                  "code": "rate_limit_exceeded"
+              }
+          }
+          mock_client.create.side_effect = RateLimitError(
+              message="Rate limit exceeded",
+              response=mock_response,
+              body=error_body
+          )
+      ```
+
+6. Model Selection:
    ```python
    completion = client.chat.completions.create(
        model="google/gemini-2.0-flash-001",
        messages=[
            {
                "role": "system",
-               "content": "You are a code modification assistant..."
+               "content": system_message
            },
            {
                "role": "user",
-               "content": project_context + change_request
+               "content": user_message
            }
        ]
    )
    ```
+
+7. Testing Strategy:
+   a. Test Categories:
+      - Basic functionality (testing mode, API key)
+      - Response validation (missing tags, invalid JSON)
+      - Error handling (API errors, timeouts, rate limits)
+      - Edge cases (empty inputs, special characters)
+      - File validation (duplicates, nested paths)
+
+   b. Mock Patterns:
+      ```python
+      # Mock service for testing
+      @pytest.fixture
+      def mock_openrouter():
+          with patch('app.services.openrouter.OpenRouterService._get_client') as mock:
+              mock_client = MagicMock()
+              mock.return_value = mock_client
+              yield mock_client
+      ```
+
+   c. Environment Handling:
+      ```python
+      # Test environment setup
+      monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+      monkeypatch.setenv("TESTING", "false")
+      ```
 
 ### Dependency Injection
 1. Service Definition:

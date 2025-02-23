@@ -1,23 +1,32 @@
 """OpenRouter service for AI interactions."""
 import os
 import re
+from pathlib import Path
 from typing import List
 from openai import OpenAI
 from ..models.project import FileChange, AIResponse, FileResponse
+
+def _read_prompt_file(filename: str) -> str:
+    """Read prompt content from a file."""
+    prompt_path = Path(__file__).parent / "prompts" / filename
+    with open(prompt_path, "r") as f:
+        return f.read().strip()
 
 class OpenRouterService:
     """Service for interacting with OpenRouter API."""
     
     def __init__(self):
         """Initialize the OpenRouter service."""
-        if os.getenv("TESTING"):
+        testing = os.getenv("TESTING", "").lower()
+        if testing in ("true", "1", "yes"):
             self.client = None
         else:
             self.client = self._get_client()
     
     def _get_client(self) -> OpenAI:
         """Get OpenAI client configured for OpenRouter."""
-        if os.getenv("TESTING"):
+        testing = os.getenv("TESTING", "").lower()
+        if testing in ("true", "1", "yes"):
             return None
             
         api_key = os.getenv("OPENROUTER_API_KEY")
@@ -56,26 +65,23 @@ class OpenRouterService:
             # During testing, we don't make actual API calls
             return []
             
+        # Read prompts from files
+        system_message = _read_prompt_file("system_message.md")
+        user_template = _read_prompt_file("user_message_template.md")
+        
+        # Format user message
+        current_files_str = "\n".join(f"- {f.path}:\n{f.content}" for f in current_files)
+        user_message = user_template.format(
+            project_context=project_context,
+            current_files=current_files_str,
+            change_request=change_request
+        )
+        
         completion = self.client.chat.completions.create(
             model="google/gemini-2.0-flash-001",  # Using Gemini 2.0 Flash for testing
             messages=[
-                {
-                    "role": "system",
-                    "content": "You are a code modification assistant. Based on the project context and change request, provide a list of file changes in the following format:\n<noodle_response>\n{\"changes\": [{\"operation\": \"create|update|delete\", \"path\": \"file/path\", \"content\": \"file content\"}]}\n</noodle_response>"
-                },
-                {
-                    "role": "user",
-                    "content": "\n".join([
-                        "Project Context:",
-                        project_context,
-                        "",
-                        "Current Files:",
-                        *[f"- {f.path}:\n{f.content}" for f in current_files],
-                        "",
-                        "Change Request:",
-                        change_request
-                    ])
-                }
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_message}
             ]
         )
         
@@ -87,6 +93,12 @@ class OpenRouterService:
         
         # Parse changes
         ai_response = AIResponse.model_validate_json(match.group(1))
+        
+        # Check for duplicate paths
+        paths = [change.path for change in ai_response.changes]
+        if len(paths) != len(set(paths)):
+            raise ValueError("Duplicate file paths found in changes")
+        
         return ai_response.changes
 
 def get_openrouter():

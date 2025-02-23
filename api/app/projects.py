@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 
 from .config import settings, get_db
 from .crud import projects as crud
-from app.services.openrouter import openrouter as default_openrouter
 from typing import Annotated
 from .models.project import (
     ProjectCreate,

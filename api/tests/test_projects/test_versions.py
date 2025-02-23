@@ -119,7 +119,9 @@ def test_version_0_file_contents_match_templates(test_db: Session):
 @pytest.fixture
 def mock_openrouter():
     """Mock OpenRouter service."""
-    with patch("app.services.openrouter.openrouter") as mock_service:
+    with patch("app.services.openrouter.OpenRouterService") as MockService:
+        # Create mock instance
+        mock_service = MockService.return_value
         # Set up mock response
         mock_service.get_file_changes.return_value = [
             FileChange(
