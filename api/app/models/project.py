@@ -178,7 +178,8 @@ class ProjectVersionListItem(BaseSchema):
     """Schema for project version list items.
     
     Used for the simplified list response when listing all versions of a project.
-    Contains only essential identifying information.
+    Contains only essential identifying information. Active state is inherited from
+    the parent project and not included in this simplified view.
     """
     id: UUID = Field(..., description="Version ID")
     version_number: int = Field(..., description="Sequential version number", ge=0)
@@ -226,3 +227,4 @@ class ProjectVersionResponse(ProjectVersionBase):
     created_at: datetime
     updated_at: datetime
     files: List[FileResponse] = Field(default_factory=list, description="List of files associated with this version")
+    active: bool = Field(..., description="Whether the version is active (inherited from project)")

@@ -59,12 +59,13 @@ def test_version_0_template_files(client: TestClient, test_project, test_db):
     from pathlib import Path
 
     # Get template files (excluding directories)
-    template_dir = Path("api/templates/version-0")
-    expected_paths = {
-        str(p.relative_to(template_dir))
-        for p in template_dir.rglob("*")
-        if p.is_file()
-    }
+    template_dir = "templates/version-0"
+    expected_paths = set()
+    for root, _, files in os.walk(template_dir):
+        for file in files:
+            file_path = os.path.join(root, file)
+            relative_path = os.path.relpath(file_path, template_dir)
+            expected_paths.add(relative_path)
     
     # Create a project
     create_response = client.post("/api/projects/", json=test_project)

@@ -1,155 +1,49 @@
 # Progress Report
 
-## 2024-02-23
+## Completed Features
 
-### Task: Improve Project Validation and Testing
+### Project Management
+- [x] Basic CRUD operations
+- [x] Soft deletion support
+- [x] Project reactivation
+- [x] Active state management
+- [x] Version management
+- [x] File management within versions
 
-**Implementation:**
+### Version Control
+- [x] Initial version (0) creation
+- [x] Version inheritance
+- [x] File versioning
+- [x] Version listing
+- [x] Version state inheritance
 
-1. **Enhanced Validation:**
-   - Added Pydantic constr validation for project names
-   - Enforced non-empty name requirement
-   - Improved validation error messages
-   - Added comprehensive test coverage
+### API Implementation
+- [x] RESTful endpoints
+- [x] Input validation
+- [x] Error handling
+- [x] Response formatting
+- [x] Pagination support
 
-2. **Integration Testing:**
-   - Added test_integration.py with comprehensive tests
-   - Verified template initialization
-   - Added validation test cases
-   - Added file path validation tests
-   - Added complete project lifecycle test
-   - Implemented proper OpenRouter mocking
+### Testing
+- [x] Unit tests
+- [x] Integration tests
+- [x] Edge case handling
+- [x] State management tests
+- [x] File operation tests
 
-**Current Status:**
-- All integration tests passing
-- Project name validation working correctly
-- Template initialization verified
-- File path constraints confirmed
-- OpenRouter integration tested
+## Recent Changes
+- Added empty version list return for inactive projects
+- Removed unsupported PATCH operation
+- Improved active state validation
+- Enhanced error messages for inactive projects
+- Fixed version listing behavior
 
-**Next Steps:**
-- Consider adding more edge cases
-- Add performance tests
-- Consider batch operations testing
+## Known Issues
+None currently.
 
-### Task: Improve OpenRouter Service Testing and Validation
-
-**Implementation:**
-
-1. **Prompt Management:**
-   - Extracted prompts to separate markdown files
-   - Created system_message.md and user_message_template.md
-   - Added prompt file loading with error handling
-   - Improved maintainability of AI prompts
-
-2. **Enhanced Validation:**
-   - Added duplicate file path validation
-   - Improved error handling for API responses
-   - Added comprehensive test coverage for edge cases
-   - Implemented proper error construction for OpenAI exceptions
-
-3. **Test Improvements:**
-   - Added tests for network errors (API errors, timeouts, rate limits)
-   - Added tests for response validation (missing tags, invalid JSON)
-   - Added tests for file validation (duplicates, special characters)
-   - Added tests for edge cases (empty inputs, missing attributes)
-   - Maintained 94% overall test coverage
-
-**Current Status:**
-- All 52 tests passing
-- OpenRouter service at 95% coverage
-- Improved error handling and validation
-- Documentation updated in systemPatterns.md
-
-**Next Steps:**
-- Consider adding response caching
-- Implement retry logic
-- Add rate limiting
-- Consider batch operations
-
-### Task: Integrate OpenRouter Service
-
-**Implementation:**
-
-1. **Service Setup:**
-   - Created OpenRouter service with dependency injection pattern
-   - Configured google/gemini-2.0-flash-001 model
-   - Added environment-based API key configuration
-   - Implemented response validation with Pydantic models
-
-2. **Response Handling:**
-   - Added noodle_response tag validation
-   - Implemented FileChange and AIResponse models
-   - Created JSON schema validation
-   - Added comprehensive error handling
-
-3. **Testing:**
-   - Created test_openrouter.py for service testing
-   - Added service mocking in conftest.py
-   - Implemented response validation tests
-   - Added error handling tests
-   - Maintained 97% test coverage
-
-**Current Status:**
-- OpenRouter service fully integrated
-- All tests passing
-- Documentation updated across Memory Bank
-- Service ready for production use
-
-**Next Steps:**
-- Consider adding response caching
-- Implement retry logic
-- Add rate limiting
-- Consider batch operations
-
-## 2024-02-22
-
-### Task: Fix Project Creation Test
-
-**Initial State:**
-
--   The project was set up with FastAPI, SQLAlchemy (async), and pytest.
--   Initial tests were failing due to issues with the test database setup and async operations within the tests.
-
-**Attempts to Fix Tests:**
-
-1.  **Initial Refactoring:**
-    -   Modified `conftest.py` to use `TestClient` in synchronous mode while keeping database operations async.
-    -   This resulted in `AttributeError: 'async_generator' object has no attribute 'add'` errors, indicating a mismatch between the synchronous test client and the async database session.
-
-2.  **Further Fixture Adjustments:**
-    -   Modified `conftest.py` to handle the async session and event loop more explicitly.
-    -   This led to `asyncpg.exceptions._base.InterfaceError: cannot perform operation: another operation is in progress` and `RuntimeError: Task ... got Future ... attached to a different loop` errors, indicating issues with concurrent async operations and event loop management.
-
-3.  **Switching to AsyncClient:**
-    -   Attempted to use `httpx.AsyncClient` in `conftest.py` to align with the async nature of the application.
-    -   This resulted in `AttributeError: 'async_generator' object has no attribute 'post'` errors, indicating that the test functions themselves needed to be async.
-
-4.  **Making Test Functions Async:**
-    -   Modified `test_projects.py` to use `async def` for test functions and `await` for client calls.
-    -   This still resulted in `TypeError: object NoneType can't be used in 'await' expression` errors, pointing to issues in the `crud.py` file, which was still using async operations.
-
-5.  **Switching to Synchronous Approach:**
-    -   Modified `conftest.py` and `config.py` to use a synchronous SQLAlchemy engine and session for testing.
-    -   This led to `AttributeError: 'PostgresDsn' object has no attribute 'replace'` errors, due to incorrect string manipulation on the database URL.
-    -   After fixing the string manipulation, encountered `TypeError: object NoneType can't be used in 'await' expression` errors, because `crud.py` was still async.
-
-6.  **Final Solution:**
-    -   Modified `api/app/config.py` to use a synchronous database engine and session.
-    -   Modified `api/app/crud.py` to use synchronous database operations.
-    -   Modified `api/app/projects.py` to use synchronous database operations.
-    -   Modified `api/tests/test_projects.py` to use synchronous test functions and assert the correct status code for the `delete_project` endpoint.
-
-**Current Status:**
-
--   The tests for project creation are now passing.
--   The project has been successfully switched to a synchronous pattern for both the application and the tests.
-
-**Next Steps:**
-
--   Update `systemPatterns.md`, `techContext.md`, and `.clinerules` with relevant information.
--   Review and update other files in the Memory Bank as needed.
-
-**Decision:**
-
--   The project has been successfully switched to a synchronous pattern, and all tests are now passing.
+## Next Steps
+1. Update to Pydantic v2 validation methods
+2. Enhance error message clarity
+3. Add performance optimizations
+4. Improve test coverage
+5. Add API documentation

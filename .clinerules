@@ -75,9 +75,38 @@
 ### Database
 - Use UUID primary keys
 - Enable Row Level Security
-- Implement soft deletion
+- Implement soft deletion through active flag
 - Maintain referential integrity
 - Use appropriate indexes
+
+#### Active State Management
+1. Project Level:
+   - Single source of truth for active state
+   - Boolean active flag in projects table
+   - Default value: true
+   - Soft deletion sets active=false
+   - Reactivation allowed through update endpoint
+
+2. State Inheritance:
+   - Versions inherit active state from project
+   - No independent version activation
+   - Files accessed through version context only
+   - No direct file-level operations
+
+3. Operation Rules:
+   - Write operations blocked on inactive projects:
+     * Creating new versions
+     * Modifying project details
+     * Any file operations
+   - Read operations allowed but show inactive state
+   - Reactivation only through project update endpoint
+   - State changes cascade through relationships
+
+4. Implementation Requirements:
+   - Check project.active before write operations
+   - Return 403 Forbidden for writes to inactive projects
+   - Include active state in version responses
+   - Maintain single source of truth pattern
 
 #### Database Relationships
 - Project -> ProjectVersion: One-to-Many

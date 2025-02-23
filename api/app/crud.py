@@ -131,6 +131,12 @@ class ProjectCRUD:
             ) for file in version.files
         ]
         
+        # Get project's active state
+        project_active = db.execute(
+            select(Project.active)
+            .filter(Project.id == version.project_id)
+        ).scalar_one()
+
         # Create and return a ProjectVersionResponse
         return ProjectVersionResponse(
             id=version.id,
@@ -141,12 +147,26 @@ class ProjectCRUD:
             parent_version=parent_version,
             created_at=version.created_at,
             updated_at=version.updated_at,
-            files=file_responses
+            files=file_responses,
+            active=project_active
         )
 
     @staticmethod
     def get_versions(db: Session, project_id: UUID, skip: int = 0, limit: int = 100) -> List[ProjectVersionListItem]:
-        """Get all versions of a project"""
+        """Get all versions of a project.
+        
+        Only returns versions if the project is active.
+        """
+        # First check if project is active
+        project_active = db.execute(
+            select(Project.active)
+            .filter(Project.id == project_id)
+        ).scalar_one()
+        
+        # Return empty list if project is inactive
+        if not project_active:
+            return []
+        
         result = db.execute(
             select(ProjectVersion.id, ProjectVersion.version_number, ProjectVersion.name)
             .filter(ProjectVersion.project_id == project_id)

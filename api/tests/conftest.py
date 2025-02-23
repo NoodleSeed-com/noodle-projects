@@ -52,9 +52,18 @@ def client(test_db, mock_openrouter):
 @pytest.fixture(scope="module")
 def mock_openrouter():
     """Mock OpenRouter service for testing."""
+    from unittest.mock import AsyncMock
+
     class MockOpenRouter:
+        def __init__(self):
+            self.generate_text = AsyncMock(return_value="Mocked response from OpenRouter")
+            self.get_file_changes = AsyncMock(return_value=[])
+
         async def generate_text(self, prompt: str) -> str:
-            return "Mocked response from OpenRouter"
+            return await self.generate_text(prompt)
+
+        async def get_file_changes(self) -> list:
+            return await self.get_file_changes()
     
     return MockOpenRouter()
 

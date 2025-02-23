@@ -1,67 +1,72 @@
 # Active Context
 
-## Current Work Focus
-
-### OpenRouter Integration
-- Implemented OpenRouter service for AI-powered code generation
-- Added response validation and error handling
-- Created comprehensive test suite for OpenRouter functionality
-- Integrated with version management system
-
-## Recent Changes
-
-1. OpenRouter Service Implementation:
-   - Added OpenRouter service with dependency injection
-   - Implemented response validation with Pydantic models
-   - Created test mocks and fixtures
-   - Added test_openrouter.py for service testing
-
-2. Response Format:
-   - Implemented noodle_response tag validation
-   - Added FileChange and AIResponse models
-   - Created JSON schema validation
-   - Added error handling for invalid responses
-
-3. Testing:
-   - Added OpenRouter service tests
-   - Updated test organization:
-     * OpenRouter integration (test_openrouter.py)
-     * Service mocking (conftest.py)
-     * Response validation
-     * Error handling
-   - Maintained 97% test coverage
-   - All tests passing
+## Current State
+The project is in a stable state with all tests passing. Recent changes have focused on improving the handling of inactive projects and their versions.
 
 ## Active Decisions
 
-1. Service Integration:
-   - Using google/gemini-2.0-flash-001 model
-   - Environment-based configuration
-   - Dependency injection pattern
-   - Comprehensive error handling
+### Project State Management
+1. Active State:
+   - Projects are active by default
+   - Soft deletion deactivates projects
+   - Reactivation through update endpoint
+   - Write operations blocked when inactive
 
-2. Response Handling:
-   - Strict response format validation
+2. Version Behavior:
+   - Versions inherit project state
+   - Empty list returned for inactive projects
+   - No independent version activation
+   - Read operations remain available
+
+3. Operation Restrictions:
+   - Write operations blocked on inactive projects
+   - Read operations show inactive state
+   - Reactivation allowed through PUT endpoint
+   - PATCH operations not supported
+
+## Current Focus
+- Maintaining consistent state inheritance
+- Ensuring proper error handling
+- Validating operation restrictions
+- Improving response clarity
+
+## Recent Changes
+1. Version Listing:
+   - Empty list for inactive projects
+   - Maintained response structure
+   - Removed active field from list items
+   - Added pagination support
+
+2. Error Handling:
+   - 403 responses for inactive operations
    - Clear error messages
-   - Proper JSON escaping
-   - File path validation
+   - Consistent error format
+   - Proper status codes
 
-## Next Steps
+## Pending Decisions
+1. Pydantic Validation:
+   - Consider updating to v2 methods
+   - Review deprecation warnings
+   - Plan migration strategy
 
-1. Potential Improvements:
-   - Add response caching
-   - Implement retry logic
-   - Add rate limiting
-   - Consider batch operations
+2. API Documentation:
+   - Document state behavior
+   - Clarify operation restrictions
+   - Update response examples
 
-2. Future Considerations:
-   - Additional AI models
-   - Enhanced error recovery
-   - Performance optimization
-   - Extended validation rules
+## Current Workflows
+1. Project Operations:
+   ```
+   GET /api/projects/ - List active projects
+   POST /api/projects/ - Create project
+   GET /api/projects/{id} - Get project
+   PUT /api/projects/{id} - Update project
+   DELETE /api/projects/{id} - Soft delete
+   ```
 
-## Current CLI Operations
-- Run all tests: `cd api && pytest tests/ -v`
-- Run OpenRouter tests: `pytest tests/test_projects/test_openrouter.py -v`
-- Coverage check: `pytest --cov=api/app api/tests/ -v`
-- All tests passing with 97% coverage
+2. Version Operations:
+   ```
+   GET /api/projects/{id}/versions - List versions (empty if project inactive)
+   POST /api/projects/{id}/versions - Create version (403 if project inactive)
+   GET /api/projects/{id}/versions/{number} - Get version (includes active state)
+   ```

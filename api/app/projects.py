@@ -55,9 +55,19 @@ def update_project(
     db: Session = Depends(get_db)
 ):
     """Update a project."""
-    db_project = crud.update(db, project_id, project)
-    if not db_project:
+    # Get existing project
+    existing = crud.get(db, project_id)
+    if not existing:
         raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Allow updates if project is active or if we're reactivating
+    if not existing.active and (project.active is None or not project.active):
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot modify inactive project. Reactivate the project first."
+        )
+    
+    db_project = crud.update(db, project_id, project)
     return db_project
 
 @router.delete("/{project_id}", response_model=ProjectResponse)
@@ -130,13 +140,19 @@ def create_project_version(
     
     Steps:
     1. Validate project and parent version exist
-    2. Get changes from AI
-    3. Create new version with changes
+    2. Check project is active
+    3. Get changes from AI
+    4. Create new version with changes
     """
-    # Check if project exists
+    # Check if project exists and is active
     project = crud.get(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
+    if not project.active:
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot create version for inactive project"
+        )
     
     # Check if parent version exists
     parent_version = crud.get_version(db, project_id, request.parent_version_number)
