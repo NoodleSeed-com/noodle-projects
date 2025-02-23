@@ -54,6 +54,14 @@
 - Path validation occurs before database operations
 - Database constraints provide additional safety layer
 
+### Version 0 Template Rules
+- Every new project starts with version 0 from template
+- Template directory structure is preserved exactly
+- All files from template are copied without modification
+- File paths remain relative to project root
+- Template changes require corresponding test updates
+- Template system is tested for both structure and content
+
 ### Version Number Validation Rules
 - Negative numbers are rejected at model level with IntegrityError
 - Version numbers must be unique within a project
@@ -105,6 +113,50 @@
 - Test database operations
 - Validate schema constraints
 - Test error handling
+
+### Service Integration Standards
+1. Dependency Injection:
+   - Define service dependencies at module level
+   - Use get_* functions for FastAPI dependencies
+   - Import dependencies, not service instances
+   - Example:
+     ```python
+     # BAD:
+     from .services import service_instance
+     
+     # GOOD:
+     from .services import get_service
+     ```
+
+2. Service Testing:
+   - Mock services through dependency injection
+   - Override dependencies in test fixtures
+   - Clear overrides after tests
+   - Use flexible assertion patterns:
+     ```python
+     # BAD:
+     mock.assert_called_once_with(exact_args)
+     
+     # GOOD:
+     mock.assert_called_once()
+     args = mock.call_args[1]
+     assert args["param"] == expected
+     ```
+
+3. Service Context:
+   - Pass relevant context to services
+   - Include current state in service calls
+   - Document required context parameters
+   - Example: Pass current files when requesting changes
+
+### Service Testing
+- Use dependency injection for external services
+- Avoid direct imports of service instances
+- Make test mode behavior configurable
+- Document mocking requirements in test files
+- Use pytest fixtures for service mocks
+- Test both success and error paths
+- Verify service calls with assert_called_once_with
 
 #### Test Structure
 ```
@@ -311,6 +363,17 @@ pip install -r api/requirements.txt
 │   │   └── models/
 │   │       ├── base.py      # Base model classes
 │   │       └── project.py   # Project models
+│   ├── templates/           # Project templates
+│   │   └── version-0/      # Initial version template
+│   │       ├── src/        # React source code
+│   │       │   ├── index.tsx
+│   │       │   ├── App.tsx
+│   │       │   └── components/
+│   │       │       └── HelloWorld.tsx
+│   │       ├── public/     # Static assets
+│   │       │   └── index.html
+│   │       ├── tsconfig.json
+│   │       └── package.json
 │   ├── requirements.txt
 │   └── README.md
 ├── supabase/
@@ -326,7 +389,42 @@ pip install -r api/requirements.txt
     └── research.md
 ```
 
+### OpenRouter Service Standards
+1. Response Format:
+   - All AI responses must be wrapped in `<noodle_response>` tags
+   - JSON structure must follow:
+     ```json
+     {
+       "changes": [{
+         "operation": "create|update|delete",
+         "path": "relative/file/path",
+         "content": "string"
+       }]
+     }
+     ```
+   - File paths must be relative to project root
+   - Content must be properly escaped in JSON
+
+2. Model Configuration:
+   - Use google/gemini-2.0-flash-001 for code generation
+   - Configure system prompt for consistent response format
+   - Include project context and current files in requests
+   - Validate responses through Pydantic models
+
+3. Error Handling:
+   - Validate presence of noodle_response tags
+   - Verify JSON structure through model validation
+   - Handle missing API keys gracefully
+   - Provide clear error messages for invalid responses
+
+4. Testing Requirements:
+   - Test response format validation
+   - Verify error handling for invalid responses
+   - Mock service in test environment
+   - Test with actual API in development
+
 ## Environment Variables
 Required in api/.env:
 ```
 DATABASE_URL=postgresql://[user]:[password]@[host]:[port]/[database]
+OPENROUTER_API_KEY=[key]  # Required for AI code generation

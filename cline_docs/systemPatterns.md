@@ -70,6 +70,22 @@ The system uses a consistent pattern for version responses that includes associa
    - Automatically created with new projects
    - Always version number 0
    - Named "Initial Version"
+   - Created from version-0 template directory
+   - Template Structure:
+     ```
+     api/templates/version-0/
+     ├── src/
+     │   ├── index.tsx           # React entry point
+     │   ├── App.tsx            # Main App component
+     │   └── components/
+     │       └── HelloWorld.tsx # Example component
+     ├── public/
+     │   └── index.html         # HTML template
+     ├── tsconfig.json          # TypeScript configuration
+     └── package.json          # Project dependencies
+     ```
+   - Ensures consistent starting point for all projects
+   - Provides complete TypeScript React project structure
 
 2. Version Sequence:
    - Monotonically increasing per project
@@ -142,13 +158,44 @@ The system uses a consistent pattern for version responses that includes associa
    ```
 
 2. Test Categories:
+   - Integration Tests: End-to-end API flow testing
    - CRUD Tests: Basic create, read, update, delete operations
    - Validation Tests: Input validation and constraints
    - Version Tests: Version management and relationships
    - File Tests: File handling and response formats
    - Edge Cases: Boundary conditions and error scenarios
 
-3. Fixture Organization:
+3. Critical Integration Test Pattern:
+   ```python
+   def test_create_project_with_version_0(client):
+       """Core integration test that verifies project creation flow."""
+       # 1. Create project via API
+       response = client.post("/api/projects/", json={
+           "name": "Test Project",
+           "description": "Test Description"
+       })
+       assert response.status_code == 201
+       project = response.json()
+       
+       # 2. Verify version 0 through API
+       response = client.get(f"/api/projects/{project['id']}/versions/0")
+       assert response.status_code == 200
+       version_0 = response.json()
+       
+       # 3. Validate template files
+       expected_files = get_template_files()
+       actual_files = {f["path"]: f["content"] for f in version_0["files"]}
+       assert set(actual_files.keys()) == set(expected_files.keys())
+   ```
+   
+   This pattern tests:
+   - Complete API flow from project creation to version retrieval
+   - Automatic version 0 creation with template files
+   - Response structure and status codes
+   - Database integration
+   - File handling system
+
+4. Fixture Organization:
    ```python
    # Shared fixtures in conftest.py
    @pytest.fixture
@@ -165,14 +212,14 @@ The system uses a consistent pattern for version responses that includes associa
        ]
    ```
 
-4. Test Patterns by Category:
+5. Test Patterns by Category:
    - CRUD: Test basic operations and response formats
    - Validation: Test constraints and error cases
    - Versions: Test relationships and numbering
    - Files: Test content and structure
    - Edge Cases: Test boundary conditions and error handling
 
-5. Validation Testing Pattern:
+6. Validation Testing Pattern:
    ```python
    # Test model-level validation
    with pytest.raises(IntegrityError, match="Version number cannot be negative"):
@@ -211,3 +258,115 @@ The system uses a consistent pattern for version responses that includes associa
    - Add database constraints as safety net
    - Provide clear error messages
    - Handle edge cases explicitly
+
+## Service Integration Patterns
+
+### OpenRouter Response Pattern
+1. Response Format:
+   ```json
+   <noodle_response>
+   {
+     "changes": [{
+       "operation": "create|update|delete",
+       "path": "relative/file/path",
+       "content": "file content"
+     }]
+   }
+   </noodle_response>
+   ```
+
+2. Model Configuration:
+   ```python
+   # models/project.py
+   class FileChange(BaseModel):
+       operation: Literal["create", "update", "delete"]
+       path: str
+       content: str
+
+   class AIResponse(BaseModel):
+       changes: List[FileChange]
+   ```
+
+3. Response Validation:
+   ```python
+   # Extract response between tags
+   match = re.search(r"<noodle_response>\s*(.*?)\s*</noodle_response>", 
+                    response_text, re.DOTALL)
+   if not match:
+       raise ValueError("AI response missing noodle_response tags")
+   
+   # Parse and validate changes
+   ai_response = AIResponse.model_validate_json(match.group(1))
+   ```
+
+4. Model Selection:
+   ```python
+   completion = client.chat.completions.create(
+       model="google/gemini-2.0-flash-001",
+       messages=[
+           {
+               "role": "system",
+               "content": "You are a code modification assistant..."
+           },
+           {
+               "role": "user",
+               "content": project_context + change_request
+           }
+       ]
+   )
+   ```
+
+### Dependency Injection
+1. Service Definition:
+   ```python
+   # services/openrouter.py
+   openrouter = OpenRouterService()
+   
+   def get_openrouter():
+       """Dependency to get OpenRouter service."""
+       return openrouter
+   ```
+
+2. Service Usage:
+   ```python
+   # routes/projects.py
+   from app.services.openrouter import get_openrouter
+   
+   @router.post("/versions")
+   def create_version(
+       openrouter_service = Depends(get_openrouter)
+   ):
+       changes = openrouter_service.get_file_changes(...)
+   ```
+
+3. Testing Pattern:
+   ```python
+   # conftest.py
+   @pytest.fixture
+   def client(mock_openrouter):
+       app.dependency_overrides[get_openrouter] = lambda: mock_openrouter
+       yield TestClient(app)
+       app.dependency_overrides.clear()
+   ```
+
+4. Service Call Verification:
+   ```python
+   # test_versions.py
+   def test_service_call(mock_service):
+       # Verify call happened
+       mock_service.method.assert_called_once()
+       
+       # Check specific arguments
+       call_args = mock_service.method.call_args[1]
+       assert call_args["param1"] == expected_value
+       
+       # Verify complex parameters
+       assert len(call_args["items"]) > 0
+   ```
+
+5. Best Practices:
+   - Keep service dependencies in their modules
+   - Use consistent import paths
+   - Clear dependency overrides after tests
+   - Verify service calls with flexible assertions
+   - Include context in service calls (e.g., current files)

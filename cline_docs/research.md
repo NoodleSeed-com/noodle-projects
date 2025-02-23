@@ -108,6 +108,58 @@ Best practices for API errors:
    - Proper status codes
    - Additional context
 
+## OpenRouter Integration with Gemini
+
+### Response Format Validation
+Research findings from Gemini 2.0 Flash testing:
+
+1. Response Structure
+   - Responses consistently wrapped in `<noodle_response>` tags
+   - Valid JSON structure within tags
+   - Proper escaping of code content
+   ```json
+   <noodle_response>
+   {"changes": [{
+     "operation": "create",
+     "path": "src/components/Button.tsx",
+     "content": "import React from 'react';\n..."
+   }]}
+   </noodle_response>
+   ```
+
+2. Code Generation Capabilities
+   - Accurate TypeScript type definitions
+   - Modern React patterns (functional components, hooks)
+   - Styled-components implementation
+   - Accessibility considerations
+   - Proper component exports
+
+3. Model Selection
+   - google/gemini-2.0-flash-001 suitable for code generation
+   - Fast response times
+   - Consistent formatting
+   - Follows provided templates
+
+4. Integration Patterns
+   - Environment-based configuration
+   - Proper error handling
+   - Response validation
+   - Content parsing
+   - Testing considerations
+
+### Key Learnings
+1. Response Validation
+   - Always verify `<noodle_response>` tags presence
+   - Validate JSON structure
+   - Check required fields (operation, path, content)
+   - Verify operation values (create, update, delete)
+
+2. Error Handling
+   - Handle missing API keys gracefully
+   - Validate response format
+   - Parse JSON safely
+   - Provide clear error messages
+
 ## Future Research Topics
 
 1. Batch Operations
@@ -127,3 +179,74 @@ Best practices for API errors:
    - Query analysis
    - Resource usage
    - Optimization opportunities
+
+## Service Integration Testing
+
+### OpenRouter Service Testing Issues
+Research findings from test implementation:
+
+1. Mocking Challenges
+   - Direct service imports make mocking difficult
+   - Testing mode returns empty list by default
+   - Mock not being called due to import structure
+
+2. Current Implementation
+   ```python
+   # projects.py
+   from app.services.openrouter import openrouter  # Direct import
+
+   # Test
+   @pytest.fixture
+   def mock_openrouter():
+       with patch("app.services.openrouter.openrouter") as mock_service:
+           mock_service.get_file_changes.return_value = [...]
+   ```
+
+3. Recommended Patterns
+   - Use dependency injection for services
+   - Avoid direct imports of service instances
+   - Make test mode behavior configurable
+   - Document mocking requirements
+
+4. Solution Implementation
+   - Move service dependency to module level:
+     ```python
+     # services/openrouter.py
+     openrouter = OpenRouterService()
+     
+     def get_openrouter():
+         """Dependency to get OpenRouter service."""
+         return openrouter
+     ```
+   - Use dependency in routes:
+     ```python
+     # projects.py
+     from app.services.openrouter import get_openrouter
+     
+     @router.post("/versions")
+     def create_version(
+         openrouter_service = Depends(get_openrouter)
+     ):
+         changes = openrouter_service.get_file_changes(...)
+     ```
+   - Override in tests:
+     ```python
+     # conftest.py
+     app.dependency_overrides[get_openrouter] = lambda: mock_openrouter
+     ```
+   - Verify service calls:
+     ```python
+     # Instead of assert_called_once_with():
+     mock_openrouter.get_file_changes.assert_called_once()
+     call_args = mock_openrouter.get_file_changes.call_args[1]
+     assert call_args["project_context"] == expected_context
+     ```
+
+5. Key Learnings
+   - Keep service dependencies centralized in their modules
+   - Use consistent import paths for dependencies
+   - Clear overrides after tests
+   - When testing service calls with complex parameters:
+     * Use assert_called_once() to verify the call happened
+     * Check individual arguments using call_args[1] for kwargs
+     * This is more flexible than assert_called_once_with()

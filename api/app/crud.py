@@ -1,3 +1,4 @@
+import os
 from typing import Optional, List
 from uuid import UUID
 from sqlalchemy import select, update
@@ -11,7 +12,9 @@ from .models.project import (
     ProjectUpdate,
     ProjectVersionListItem,
     ProjectVersionResponse,
-    FileResponse
+    FileResponse,
+    FileOperation,
+    FileChange
 )
 
 class ProjectCRUD:
@@ -45,7 +48,7 @@ class ProjectCRUD:
         db.commit()
         db.refresh(db_project)
 
-        # Create initial version
+        # Create initial version with template files
         db_version = ProjectVersion(
             project_id=db_project.id,
             version_number=0,
@@ -55,6 +58,24 @@ class ProjectCRUD:
         db.commit()
         db.refresh(db_version)
 
+        # Read and add template files
+        template_dir = os.path.join(os.path.dirname(__file__), '..', 'templates', 'version-0')
+        for root, _, files in os.walk(template_dir):
+            for file in files:
+                file_path = os.path.join(root, file)
+                relative_path = os.path.relpath(file_path, template_dir)
+                
+                with open(file_path, 'r') as f:
+                    content = f.read()
+                
+                db_file = File(
+                    project_version_id=db_version.id,
+                    path=relative_path,
+                    content=content
+                )
+                db.add(db_file)
+        
+        db.commit()
         return db_project
 
     @staticmethod
@@ -135,6 +156,103 @@ class ProjectCRUD:
         )
         return [ProjectVersionListItem(id=id, version_number=number, name=name) 
                 for id, number, name in result]
+
+    @staticmethod
+    def create_version(
+        db: Session,
+        project_id: UUID,
+        parent_version_number: int,
+        name: str,
+        changes: List[FileChange]
+    ) -> Optional[ProjectVersionResponse]:
+        """Create a new version based on a parent version and apply changes.
+        
+        Args:
+            db: Database session
+            project_id: Project UUID
+            parent_version_number: Version number to base the new version on
+            name: Name for the new version
+            changes: List of file changes to apply
+            
+        Returns:
+            New version with applied changes, or None if parent version not found
+        """
+        # Get parent version with its files
+        parent_version = db.execute(
+            select(ProjectVersion)
+            .options(joinedload(ProjectVersion.files))
+            .filter(
+                ProjectVersion.project_id == project_id,
+                ProjectVersion.version_number == parent_version_number
+            )
+        ).unique().scalar_one_or_none()
+        
+        if not parent_version:
+            return None
+            
+        # Create new version with incremented version number
+        new_version = ProjectVersion(
+            project_id=project_id,
+            version_number=parent_version.version_number + 1,
+            parent_version_id=parent_version.id,
+            name=name
+        )
+        db.add(new_version)
+        db.flush()  # Get new_version.id without committing
+        
+        # Create a map of existing files by path
+        existing_files = {file.path: file for file in parent_version.files}
+        
+        # Create list to track all files for the new version
+        files_to_add = []
+        
+        # First copy all files from parent version
+        for path, file in existing_files.items():
+            files_to_add.append(File(
+                project_version_id=new_version.id,
+                path=path,
+                content=file.content
+            ))
+        
+        # Apply changes
+        for change in changes:
+            if change.operation == FileOperation.CREATE:
+                if not change.content:
+                    raise ValueError(f"Content required for CREATE operation on {change.path}")
+                files_to_add.append(File(
+                    project_version_id=new_version.id,
+                    path=change.path,
+                    content=change.content
+                ))
+            
+            elif change.operation == FileOperation.UPDATE:
+                if not change.content:
+                    raise ValueError(f"Content required for UPDATE operation on {change.path}")
+                if change.path not in existing_files:
+                    raise ValueError(f"Cannot update non-existent file: {change.path}")
+                # Remove old file if it exists
+                files_to_add = [f for f in files_to_add if f.path != change.path]
+                # Add updated file
+                files_to_add.append(File(
+                    project_version_id=new_version.id,
+                    path=change.path,
+                    content=change.content
+                ))
+            
+            elif change.operation == FileOperation.DELETE:
+                if change.path not in existing_files:
+                    raise ValueError(f"Cannot delete non-existent file: {change.path}")
+                # Remove file from list
+                files_to_add = [f for f in files_to_add if f.path != change.path]
+        
+        # Set the files relationship and commit
+        new_version.files = files_to_add
+        db.add(new_version)
+        db.commit()
+        db.refresh(new_version)
+        
+        # Return the complete version response
+        return ProjectCRUD.get_version(db, project_id, new_version.version_number)
 
 # Export the CRUD operations
 projects = ProjectCRUD()

@@ -8,12 +8,15 @@ from sqlalchemy.orm import Session
 
 from .config import settings, get_db
 from .crud import projects as crud
+from app.services.openrouter import openrouter as default_openrouter
+from typing import Annotated
 from .models.project import (
     ProjectCreate,
     ProjectUpdate,
     ProjectResponse,
     ProjectVersionResponse,
-    ProjectVersionListItem
+    ProjectVersionListItem,
+    CreateVersionRequest
 )
 
 router = APIRouter()
@@ -114,3 +117,56 @@ def get_project_version(
     if not version:
         raise HTTPException(status_code=404, detail="Version not found")
     return version
+
+from app.services.openrouter import get_openrouter
+
+@router.post("/{project_id}/versions", response_model=ProjectVersionResponse)
+def create_project_version(
+    project_id: UUID,
+    request: CreateVersionRequest,
+    db: Session = Depends(get_db),
+    openrouter_service = Depends(get_openrouter)
+):
+    """Create a new version of a project.
+    
+    Steps:
+    1. Validate project and parent version exist
+    2. Get changes from AI
+    3. Create new version with changes
+    """
+    # Check if project exists
+    project = crud.get(db, project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    
+    # Check if parent version exists
+    parent_version = crud.get_version(db, project_id, request.parent_version_number)
+    if not parent_version:
+        raise HTTPException(status_code=404, detail="Parent version not found")
+    
+    try:
+        # Get changes from OpenRouter service
+        changes = openrouter_service.get_file_changes(
+            project_context=request.project_context,
+            change_request=request.change_request,
+            current_files=parent_version.files
+        )
+        
+        # Create new version with changes
+        new_version = crud.create_version(
+            db=db,
+            project_id=project_id,
+            parent_version_number=request.parent_version_number,
+            name=request.name,
+            changes=changes
+        )
+        
+        if not new_version:
+            raise HTTPException(status_code=500, detail="Failed to create new version")
+        
+        return new_version
+        
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating version: {str(e)}")

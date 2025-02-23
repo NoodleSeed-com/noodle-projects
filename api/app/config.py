@@ -26,6 +26,9 @@ class Settings(BaseSettings):
   # Test mode flag
   TEST_MODE: bool = False
 
+  # OpenRouter
+  OPENROUTER_API_KEY: str | None = None
+
   model_config = SettingsConfigDict(env_file=".env", case_sensitive=True)
 
 

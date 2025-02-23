@@ -53,21 +53,35 @@ def test_get_specific_version_with_files(client: TestClient, test_project, test_
         assert response_file["path"] == file_data["path"]
         assert response_file["content"] == file_data["content"]
 
-def test_version_with_no_files(client: TestClient, test_project, test_db):
-    """Test that a version with no files returns an empty files array."""
+def test_version_0_template_files(client: TestClient, test_project, test_db):
+    """Test that version 0 contains all files from the template directory."""
+    import os
+    from pathlib import Path
+
+    # Get template files (excluding directories)
+    template_dir = Path("api/templates/version-0")
+    expected_paths = {
+        str(p.relative_to(template_dir))
+        for p in template_dir.rglob("*")
+        if p.is_file()
+    }
+    
     # Create a project
     create_response = client.post("/api/projects/", json=test_project)
     project_id = create_response.json()["id"]
     
-    # Get the initial version (which should have no files)
+    # Get version 0 which should have template files
     response = client.get(f"/api/projects/{project_id}/versions/0")
     assert response.status_code == 200
     data = response.json()
     
-    # Verify empty files array
+    # Verify files array contains all template files
     assert "files" in data
     assert isinstance(data["files"], list)
-    assert len(data["files"]) == 0
+    
+    # Verify all template files are present
+    actual_paths = {file["path"] for file in data["files"]}
+    assert actual_paths == expected_paths
 
 def test_get_project_with_versions_and_files(client: TestClient, test_project, test_db):
     """Test retrieving a project with associated versions and files."""

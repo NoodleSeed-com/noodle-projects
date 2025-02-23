@@ -1,6 +1,7 @@
 """
 Project models module combining SQLAlchemy and Pydantic models.
 """
+from enum import Enum
 from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
@@ -186,6 +187,29 @@ class FileResponse(BaseSchema):
     id: UUID = Field(..., description="File ID")
     path: str = Field(..., description="File path")
     content: str = Field(..., description="File content")
+
+class FileOperation(str, Enum):
+    """Enum for file operations."""
+    CREATE = "create"
+    UPDATE = "update"
+    DELETE = "delete"
+
+class FileChange(BaseSchema):
+    """Schema for file changes."""
+    operation: FileOperation
+    path: str = Field(..., description="Path of the file to operate on")
+    content: Optional[str] = Field(None, description="Content for create/update operations")
+
+class AIResponse(BaseSchema):
+    """Schema for AI response containing file changes."""
+    changes: List[FileChange] = Field(..., description="List of file changes to apply")
+
+class CreateVersionRequest(BaseSchema):
+    """Schema for creating a new version with changes."""
+    name: str = Field(..., description="Required name for the version")
+    parent_version_number: int = Field(..., ge=0, description="The version number to base the new version on")
+    project_context: str = Field(..., description="Project context string")
+    change_request: str = Field(..., description="Change request string")
 
 class ProjectVersionResponse(ProjectVersionBase):
     """Schema for project version responses.

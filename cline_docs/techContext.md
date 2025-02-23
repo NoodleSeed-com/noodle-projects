@@ -10,6 +10,7 @@
 -   **httpx:** HTTP client (used by FastAPI's TestClient).
 -   **psycopg2-binary:** `psycopg2-binary` (for synchronous operations)
 -   **dotenv:** For loading environment variables.
+-   **OpenRouter:** AI service integration for code generation.
 
 ## Development Setup
 
@@ -35,6 +36,7 @@
 -   **pytest:** `pytest`
 -   **httpx:** `httpx`
 -   **python-dotenv:** `python-dotenv`
+-   **openrouter-py:** OpenRouter API client
 
 ## Validation Constraints
 
@@ -89,16 +91,91 @@
 - Verify correct headers in responses
 - Check allowed methods and headers
 
-## Resolved Issues
+## OpenRouter Integration
 
--   The project was initially set up with asynchronous SQLAlchemy (asyncpg) and FastAPI endpoints, which caused compatibility issues with the synchronous `TestClient` used in the tests.
--   Switching to a fully synchronous approach has resolved these issues.
--   Version number validation now happens at multiple layers for better error handling.
--   CORS testing updated to match FastAPI's actual behavior.
+### Service Configuration
+- Uses google/gemini-2.0-flash-001 model
+- Environment-based API key configuration
+- Response validation with Pydantic models
+- Proper error handling and logging
 
-## Potential Solutions (No Longer Needed)
+### Response Format
+- Responses wrapped in `<noodle_response>` tags
+- JSON structure for file changes:
+  ```json
+  {
+    "changes": [{
+      "operation": "create|update|delete",
+      "path": "relative/file/path",
+      "content": "string"
+    }]
+  }
+  ```
+- File paths relative to project root
+- Content properly escaped in JSON
 
--   ~~Fully Asynchronous Approach: Keep the application code asynchronous and modify the tests to use `pytest-asyncio` correctly, ensuring proper event loop management and using an async test client like `httpx.AsyncClient`. This might require more complex test setup.~~
+### Service Pattern
+- Dependency injection for service access
+- Centralized service configuration
+- Test mode support
+- Comprehensive error handling
+
+### Testing Strategy
+- Mock service in test environment
+- Override dependencies in tests
+- Verify service calls with flexible assertions
+- Clear mock overrides after tests
+
+## Version 0 Template System
+
+### Implementation Details
+1. Template Location:
+   - Located at api/templates/version-0/
+   - Structured as a complete TypeScript React project
+   - Files are read during project creation
+
+2. File Loading:
+   ```python
+   template_dir = os.path.join(os.path.dirname(__file__), '..', 'templates', 'version-0')
+   for root, _, files in os.walk(template_dir):
+       for file in files:
+           file_path = os.path.join(root, file)
+           relative_path = os.path.relpath(file_path, template_dir)
+           with open(file_path, 'r') as f:
+               content = f.read()
+           db_file = File(
+               project_version_id=version.id,
+               path=relative_path,
+               content=content
+           )
+   ```
+
+3. Path Handling:
+   - Uses os.path for cross-platform compatibility
+   - Maintains relative paths from template root
+   - Preserves directory structure in database
+
+4. Testing:
+   - Comprehensive test suite in test_versions.py
+   - Verifies file structure matches template
+   - Validates file contents are copied correctly
+   - Tests run in CI/CD pipeline
+
+### Technical Considerations
+1. File System:
+   - Template files read synchronously
+   - UTF-8 encoding assumed for all files
+   - Directory structure preserved in database
+
+2. Database Impact:
+   - Files created in single transaction
+   - Bulk insert for better performance
+   - Maintains referential integrity
+
+3. Error Handling:
+   - File read errors caught and logged
+   - Transaction rollback on failure
+   - Clear error messages for debugging
 
 ## Test Coverage
 
@@ -117,3 +194,22 @@
 - Models require 100% coverage
 - Edge cases and error conditions must be tested
 - Regular coverage monitoring in CI/CD
+
+### Critical Path Testing
+The most critical integration test verifies the core project creation flow:
+```python
+# In test_main.py
+def test_create_project_with_version_0(client):
+    """Core integration test that verifies project creation flow."""
+    # Tests complete flow from project creation to version retrieval
+    # Ensures version 0 template system works correctly
+    # Verifies API endpoints, database operations, and file handling
+```
+
+This test is essential because:
+- Tests the foundational project creation operation
+- Verifies automatic version 0 creation
+- Validates template file system
+- Ensures API endpoints work correctly
+- Confirms database integration
+- Represents the most common user flow
