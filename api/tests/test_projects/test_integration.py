@@ -6,7 +6,7 @@ import pytest
 from uuid import UUID
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-from pydantic import parse_obj_as, ValidationError
+from pydantic import ValidationError, TypeAdapter
 from typing import List
 from app.crud import projects
 from app.models.project import (
@@ -18,6 +18,10 @@ from app.models.project import (
     ProjectVersionResponse,
     ProjectVersionListItem
 )
+
+# Type adapters for common validations
+project_list_adapter = TypeAdapter(List[ProjectResponse])
+version_list_adapter = TypeAdapter(List[ProjectVersionListItem])
 
 @pytest.fixture
 def active_project(test_db: Session, client: TestClient) -> dict:
@@ -90,7 +94,7 @@ def test_soft_delete_via_api(active_project: dict, client: TestClient):
     assert any(p["id"] == project_id for p in projects_list)
     
     # Verify list response matches schema
-    project_list = parse_obj_as(List[ProjectResponse], projects_list)
+    project_list = project_list_adapter.validate_python(projects_list)
     assert len(project_list) > 0
 
     # Perform soft delete
@@ -304,14 +308,14 @@ def test_version_list_reflects_project_state(project_with_version: tuple[dict, d
     assert len(versions) == 1  # Respects limit parameter
     
     # Verify version list schema
-    version_items = parse_obj_as(List[ProjectVersionListItem], versions)
+    version_items = version_list_adapter.validate_python(versions)
 
     # Get all versions
     list_response = client.get(f"/api/projects/{project_id}/versions")
     assert list_response.status_code == 200
     versions = list_response.json()
     assert len(versions) == 2  # Version 0 and new version
-    version_items = parse_obj_as(List[ProjectVersionListItem], versions)
+    version_items = version_list_adapter.validate_python(versions)
 
     # Soft delete project
     client.delete(f"/api/projects/{project_id}")
@@ -329,7 +333,7 @@ def test_version_list_reflects_project_state(project_with_version: tuple[dict, d
     assert list_final.status_code == 200
     versions = list_final.json()
     assert len(versions) == 2
-    version_items = parse_obj_as(List[ProjectVersionListItem], versions)
+    version_items = version_list_adapter.validate_python(versions)
 
 def test_inactive_project_operations(inactive_project: dict, client: TestClient, mock_openrouter):
     """Test operations on inactive projects.
