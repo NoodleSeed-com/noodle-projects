@@ -33,7 +33,7 @@ def test_database_url_formats():
     settings = Settings(DATABASE_URL="postgresql+asyncpg://user:pass@localhost/db")
     assert "postgresql+asyncpg" in str(settings.DATABASE_URL)
 
-def test_get_db_error_handling(monkeypatch):
+async def test_get_db_error_handling(monkeypatch):
     """Test database session error handling."""
     class MockSession:
         def __init__(self):
@@ -51,7 +51,7 @@ def test_get_db_error_handling(monkeypatch):
     
     # Test normal operation
     db_gen = get_db()
-    db = next(db_gen)
+    db = await anext(db_gen)
     assert isinstance(db, MockSession)
     assert not session.closed  # Session should not be closed yet
     
@@ -66,11 +66,11 @@ def test_get_db_error_handling(monkeypatch):
     # Test error handling
     session.closed = False  # Reset for error test
     db_gen = get_db()
-    db = next(db_gen)
+    db = await anext(db_gen)
     
     # Simulate error
     try:
-        db_gen.throw(SQLAlchemyError("Test error"))
+        await db_gen.athrow(SQLAlchemyError("Test error"))
     except SQLAlchemyError:
         pass
     

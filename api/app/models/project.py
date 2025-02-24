@@ -91,6 +91,11 @@ class ProjectVersion(Base):
         cascade="all, delete-orphan"
     )
 
+    @hybrid_property
+    def active(self) -> bool:
+        """Whether this version is active (inherited from project)."""
+        return self.project.active
+
 class File(Base):
     """SQLAlchemy model for files."""
     __tablename__ = "files"

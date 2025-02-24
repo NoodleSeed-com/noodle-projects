@@ -34,6 +34,12 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+engine = create_engine(str(settings.DATABASE_URL))
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
 # Create engine based on test mode
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 

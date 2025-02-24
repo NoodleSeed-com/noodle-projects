@@ -1,8 +1,8 @@
 from fastapi.testclient import TestClient
 
-def test_create_project(client: TestClient, test_project):
+async def test_create_project(client: TestClient, test_project):
     """Test creating a new project."""
-    response = client.post("/api/projects/", json=test_project)
+    response = await client.post("/api/projects/", json=test_project)
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == test_project["name"]
@@ -10,15 +10,15 @@ def test_create_project(client: TestClient, test_project):
     assert "id" in data
     assert data["latest_version_number"] == 0  # Verify initial version number
 
-def test_get_project(client: TestClient, test_project):
+async def test_get_project(client: TestClient, test_project):
     """Test retrieving a project."""
     # First create a project
-    create_response = client.post("/api/projects/", json=test_project)
+    create_response = await client.post("/api/projects/", json=test_project)
     assert create_response.status_code == 201
     project_id = create_response.json()["id"]
     
     # Then retrieve it
-    response = client.get(f"/api/projects/{project_id}")
+    response = await client.get(f"/api/projects/{project_id}")
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == project_id

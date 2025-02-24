@@ -363,6 +363,124 @@ Research findings from test refactoring:
 
 ## SQLAlchemy Async Testing Patterns (2024-02-23)
 
+### Mock Response Type Issues (Updated 2024-02-23)
+Investigation of test failures in edge case tests revealed critical mocking patterns:
+
+1. Problem Analysis
+   - Error: `AttributeError: 'Project' object has no attribute 'files'`
+   - Root cause: Mock returning Project instead of ProjectVersion for version queries
+   - Complex query patterns with joinedload relationships causing type mismatches
+   - String-based query inspection proving unreliable
+
+2. Query Patterns Requiring Different Return Types
+   ```python
+   # Project queries:
+   select(Project).options(joinedload(Project.versions))
+   select(Project).filter(Project.active == True)
+   select(Project.active)
+   update(Project)
+
+   # ProjectVersion queries:
+   select(ProjectVersion).options(joinedload(ProjectVersion.files))
+   select(ProjectVersion.version_number)
+   select(ProjectVersion.id, ProjectVersion.version_number, ProjectVersion.name)
+   ```
+
+3. Attempted Solutions
+   a. Parameter-based mocking:
+      ```python
+      # Issue: Too simplistic, doesn't handle complex queries
+      mock.execute = AsyncMock(
+          return_value=version_result if param == "project_versions" else project_result
+      )
+      ```
+
+   b. Query string inspection:
+      ```python
+      # Issue: Brittle, depends on string representation
+      if "ProjectVersion" in str(query):
+          return version_result
+      ```
+
+   c. Query structure inspection:
+      ```python
+      # Issue: Complex to maintain, tight coupling to SQLAlchemy internals
+      if isinstance(query, Select) and query.froms[0].name == 'project_versions':
+          return version_result
+      ```
+
+4. Key Learnings
+   - String-based query inspection is unreliable
+   - Need better pattern for handling different query types
+   - Consider refactoring to simpler query patterns
+   - May need separate test classes for different query types
+   - Integration tests might be more suitable for complex queries
+
+5. Next Steps
+   - Research SQLAlchemy test patterns for complex queries
+   - Consider mock-alchemy library for better query mocking
+   - Evaluate test structure reorganization
+   - Document query patterns and expected returns
+
+### Mock Response Type Issues
+Investigation of test failures in edge case tests revealed critical mocking patterns:
+
+1. Problem Analysis
+   - Error: `AttributeError: 'Project' object has no attribute 'parent_version_id'`
+   - Error: `AttributeError: 'ProjectVersion' object has no attribute 'active'`
+   - Root cause: Mock returning wrong model types for different queries
+   - Parameterized fixture causing type confusion
+
+2. Query Result Patterns
+   ```python
+   # Different return types needed:
+   crud.get(db, project_id) -> Project  # Should return Project instance
+   crud.get_version(db, project_id, version) -> ProjectVersionResponse  # Should return ProjectVersionResponse
+   ```
+
+3. Mock Implementation Challenges
+   - Single mock needs to handle multiple query types
+   - Each query type expects different return model
+   - Query inspection needed to determine return type
+   - Async/sync method mixing causing issues
+
+4. Bad Pattern: Simple Parameterized Returns
+   ```python
+   # DON'T: Returns wrong types for different queries
+   @pytest.fixture(params=["project", "version"])
+   def mock_db(request):
+       result = MagicMock()
+       if request.param == "project":
+           result.scalar_one_or_none = lambda: mock_project
+       else:
+           result.scalar_one_or_none = lambda: mock_version
+       return result
+   ```
+
+5. Good Pattern: Query-Based Returns
+   ```python
+   # DO: Return based on query type
+   async def mock_execute(query):
+       if "Project.active" in str(query):
+           return MagicMock(scalar_one=lambda: True)
+       if "ProjectVersion" in str(query):
+           return MagicMock(
+               unique=lambda: self,
+               scalar_one_or_none=lambda: mock_version
+           )
+       # Default Project queries
+       return MagicMock(
+           scalar_one_or_none=lambda: mock_project
+       )
+   ```
+
+6. Key Learnings
+   - Mock returns must match model types exactly
+   - Query inspection better than parameterization
+   - Consider separate mocks for different query types
+   - Document expected return types clearly
+   - Test mock behavior independently
+
 ### Event Loop Management Issues
 Investigation of test failures revealed critical async testing patterns:
 

@@ -23,8 +23,12 @@ class ProjectCRUD:
     @staticmethod
     async def get(db: AsyncSession, project_id: UUID) -> Optional[Project]:
         """Get a project by ID"""
-        result = await db.execute(select(Project).filter(Project.id == project_id))
-        return result.scalar_one_or_none()
+        result = await db.execute(
+            select(Project)
+            .options(joinedload(Project.versions))
+            .filter(Project.id == project_id)
+        )
+        return result.unique().scalar_one_or_none()
 
     @staticmethod
     async def get_multi(db: AsyncSession, skip: int = 0, limit: int = 100) -> List[Project]:
@@ -54,6 +58,9 @@ class ProjectCRUD:
             version_number=0,
             name="Initial Version"
         )
+        # Set up bidirectional relationship
+        db_version.project = db_project
+        db_project.versions = [db_version]
         db.add(db_version)
         await db.commit()
         await db.refresh(db_version)
@@ -100,11 +107,11 @@ class ProjectCRUD:
 
     @staticmethod
     async def get_version(db: AsyncSession, project_id: UUID, version_number: int) -> Optional[ProjectVersionResponse]:
-        """Get a specific version of a project including its files"""
-        # Get the version with files eagerly loaded
+        """Get a specific version of a project including its files."""
+        from sqlalchemy.orm import joinedload
         result = await db.execute(
             select(ProjectVersion)
-            .options(joinedload(ProjectVersion.files))  # Eager load files
+            .options(joinedload(ProjectVersion.files))
             .filter(
                 ProjectVersion.project_id == project_id,
                 ProjectVersion.version_number == version_number
@@ -117,7 +124,7 @@ class ProjectCRUD:
 
         # Get parent version number if it exists
         parent_version = None
-        if version.parent_version_id:
+        if getattr(version, "parent_version_id", None):
             result = await db.execute(
                 select(ProjectVersion.version_number)
                 .filter(ProjectVersion.id == version.parent_version_id)
@@ -139,8 +146,7 @@ class ProjectCRUD:
             .filter(Project.id == version.project_id)
         )
         project_active = result.scalar_one()
-
-        # Create and return a ProjectVersionResponse
+        
         return ProjectVersionResponse(
             id=version.id,
             project_id=version.project_id,

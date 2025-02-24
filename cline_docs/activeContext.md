@@ -1,14 +1,23 @@
 # Active Context
 
-## Current State (Updated 2024-02-23)
-Currently addressing test failures with a focus on transaction management in crud.py's create method.
+## Current State (Updated 2024-02-23 22:49 PST)
+Currently addressing test failures in edge case tests, specifically focusing on SQLAlchemy mocking issues in test_partial_version_creation_rollback.
 
 ## Test Failures (In Priority Order)
-1. Transaction Management (Current Focus)
-   - test_create_project_with_version_0[asyncio/trio]
-   - Error: "Can't operate on closed transaction inside context manager"
-   - Root cause: Multiple commits in crud.py create() method conflicting with test fixture transaction
-   - Next steps: Refactor create() method to use a single transaction
+1. SQLAlchemy Mock Response Types (Current Focus)
+   - test_partial_version_creation_rollback failing
+   - Error: `AttributeError: 'Project' object has no attribute 'files'`
+   - Root cause: Mock returning Project instead of ProjectVersion for version queries
+   - Attempted solutions:
+     * Parameter-based mocking (too simplistic)
+     * Query string inspection (unreliable)
+     * Query structure inspection (too complex)
+   - Next steps:
+     * Research SQLAlchemy test patterns for complex queries
+     * Consider mock-alchemy library for better query mocking
+     * Evaluate test structure reorganization
+     * Document query patterns and expected returns
+     * Consider moving complex query tests to integration tests
 
 2. Model Access Pattern (Resolved)
    - test_health_check and test_cors_middleware: PASSING
@@ -56,12 +65,11 @@ Currently addressing test failures with a focus on transaction management in cru
    - PATCH operations not supported
 
 ## Current Focus
-- Improving error handling patterns
-- Enhancing test coverage for edge cases
-- Implementing service mocking standards
-- Maintaining transaction integrity
-- Fixing test organization issues
-- Resolving concurrent test failures
+- Fixing SQLAlchemy mock response types in edge case tests
+- Implementing query-based mock returns
+- Ensuring correct model types in test responses
+- Documenting mocking patterns and best practices
+- Resolving remaining edge case test failures
 
 ## Test Organization
 1. Directory Structure:
@@ -69,7 +77,7 @@ Currently addressing test failures with a focus on transaction management in cru
    api/tests/
    ├── unit_tests/          # Mock-dependent tests
    │   ├── conftest.py      # Unit test fixtures
-   │   ├── test_edge_cases.py
+   │   ├── test_edge_cases.py  # Currently failing
    │   ├── test_concurrent_operations.py
    │   └── test_inactive_project.py
    └── integration_tests/   # Real dependency tests
@@ -78,17 +86,43 @@ Currently addressing test failures with a focus on transaction management in cru
        └── test_integration.py
    ```
 
+2. Mock Implementation:
+   ```python
+   # Current Issue (Bad Pattern):
+   @pytest.fixture(params=["project", "version"])
+   def mock_db(request):
+       result = MagicMock()
+       if request.param == "project":
+           result.scalar_one_or_none = lambda: mock_project
+       else:
+           result.scalar_one_or_none = lambda: mock_version
+       return result
+
+   # Needed Pattern:
+   async def mock_execute(query):
+       if "Project.active" in str(query):
+           return MagicMock(scalar_one=lambda: True)
+       if "ProjectVersion" in str(query):
+           return MagicMock(
+               unique=lambda: self,
+               scalar_one_or_none=lambda: mock_version
+           )
+       return MagicMock(
+           scalar_one_or_none=lambda: mock_project
+       )
+   ```
+
 2. Current Issues:
+   - Mock returns wrong model types for queries
+   - Query type detection needs improvement
    - Response validation errors in unit tests
    - Transaction state conflicts in concurrent tests
-   - JSON syntax errors in test data
-   - Need to properly mock response data
 
 3. Next Actions:
+   - Implement query-based mock returns
+   - Add test coverage for mock behavior
    - Fix response validation by including all required fields
    - Add transaction completion checks
-   - Fix JSON syntax in test requests
-   - Update mock_db fixture to handle validation
 
 ## Recent Changes
 1. Error Handling:

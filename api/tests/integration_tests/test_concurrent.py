@@ -6,7 +6,7 @@ from tests.common.test_helpers import (
     assert_response_mix
 )
 
-def test_concurrent_state_changes(client: TestClient, test_db: Session):
+async def test_concurrent_state_changes(client: TestClient):
     """Test concurrent project state changes.
     
     Verifies:
@@ -16,7 +16,7 @@ def test_concurrent_state_changes(client: TestClient, test_db: Session):
     4. All versions reflect correct state
     """
     # Create test project
-    response = client.post("/api/projects/", json={
+    response = await client.post("/api/projects/", json={
         "name": "Test Project",
         "description": "Testing state changes"
     })
@@ -24,13 +24,13 @@ def test_concurrent_state_changes(client: TestClient, test_db: Session):
     project_id = response.json()["id"]
     
     # Make concurrent state change requests
-    def change_state(i: int):
-        return client.put(
+    async def change_state(i: int):
+        return await client.put(
             f"/api/projects/{project_id}",
             json={"active": i % 2 == 0}
         )
     
-    responses = run_concurrent_requests(client, change_state, count=3)
+    responses = await run_concurrent_requests(client, change_state, count=3)
     
     # Verify mix of success and conflict responses
     assert_response_mix(responses, [200, 409])
@@ -39,19 +39,19 @@ def test_concurrent_state_changes(client: TestClient, test_db: Session):
     for response in responses:
         if response.status_code == 200:
             # Wait for transaction to complete
-            client.get(f"/api/projects/{project_id}")
+            await client.get(f"/api/projects/{project_id}")
     
     # Get final state
-    final_response = client.get(f"/api/projects/{project_id}")
+    final_response = await client.get(f"/api/projects/{project_id}")
     assert final_response.status_code == 200
     final_state = final_response.json()
     assert isinstance(final_state["active"], bool)
     
     # Check all versions inherit project state
-    versions_response = client.get(f"/api/projects/{project_id}/versions")
+    versions_response = await client.get(f"/api/projects/{project_id}/versions")
     assert versions_response.status_code == 200
     for version in versions_response.json():
-        version_detail = client.get(
+        version_detail = await client.get(
             f"/api/projects/{project_id}/versions/{version['version_number']}"
         )
         assert version_detail.status_code == 200

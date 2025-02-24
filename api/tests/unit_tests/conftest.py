@@ -2,8 +2,10 @@ import os
 import pytest
 from pathlib import Path
 from dotenv import load_dotenv
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch
 from fastapi.testclient import TestClient
+from sqlalchemy import Column, Table, Select
+from sqlalchemy.orm import joinedload
 
 # Load environment variables before importing app modules
 env_path = Path(__file__).parent / "test.env"
@@ -13,10 +15,99 @@ load_dotenv(dotenv_path=env_path)
 from app.main import app
 from app.config import get_db, settings
 
+from datetime import datetime
+from uuid import uuid4
+from app.models.project import Project, ProjectVersion, File
+
 @pytest.fixture(scope="module")
-def mock_db():
-    """Mock database session for unit tests."""
-    return MagicMock()
+def mock_project():
+    """Mock Project instance for testing."""
+    project = Project(
+        id=uuid4(),
+        name="Test Project",
+        description="Test Description",
+        active=True,
+        created_at=datetime.now(),
+        updated_at=datetime.now()
+    )
+    project.versions = []  # Initialize empty versions list
+    return project
+
+@pytest.fixture(scope="module")
+def mock_version(mock_project):
+    """Mock ProjectVersion instance for testing."""
+    version = ProjectVersion(
+        id=uuid4(),
+        project_id=mock_project.id,
+        version_number=0,  # This is correct - initial version is 0
+        name="Initial Version",
+        parent_version_id=None,
+        created_at=datetime.now(),
+        updated_at=datetime.now()
+    )
+    # Initialize files list
+    version.files = [
+        File(
+            id=uuid4(),
+            path="src/test.tsx",
+            content="export const Test = () => <div>Test</div>",
+            created_at=datetime.now(),
+            updated_at=datetime.now()
+        )
+    ]
+    # Set up bidirectional relationships
+    for file in version.files:
+        file.project_version_id = version.id
+        file.version = version
+    
+    # Set up project relationship
+    version.project = mock_project
+    mock_project.versions = [version]
+    
+    return version
+
+@pytest.fixture(scope="module", params=["projects", "project_versions"])
+def mock_db(request, mock_project, mock_version):
+    """Parameterized fixture for different return types."""
+    mock = AsyncMock()
+    
+    # Configure async methods
+    mock.commit = AsyncMock()
+    mock.rollback = AsyncMock()
+    # Configure refresh to set required fields
+    async def mock_refresh(obj):
+        if not getattr(obj, 'id', None):
+            obj.id = uuid4()
+        # Only set active on Project instances
+        if isinstance(obj, Project) and not getattr(obj, 'active', None):
+            obj.active = True
+        if not getattr(obj, 'created_at', None):
+            obj.created_at = datetime.now()
+        if not getattr(obj, 'updated_at', None):
+            obj.updated_at = datetime.now()
+        return obj
+
+    mock.refresh = AsyncMock(side_effect=mock_refresh)
+    mock.scalar = AsyncMock()
+    mock.scalars = AsyncMock()
+    
+    # Configure mock results
+    project_result = MagicMock()
+    project_result.scalar_one_or_none = lambda: mock_project
+    project_result.unique = lambda: project_result
+    project_result.scalars = lambda: MagicMock(all=lambda: [mock_project])
+    project_result.scalar_one = lambda: mock_project.active
+
+    version_result = MagicMock()
+    version_result.scalar_one_or_none = lambda: mock_version
+    version_result.unique = lambda: version_result
+    version_result.scalars = lambda: MagicMock(all=lambda: [mock_version])
+    version_result.all = lambda: [(mock_version.id, mock_version.version_number, mock_version.name)]
+
+    # Configure execute to return appropriate result
+    mock.execute = AsyncMock(return_value=version_result if request.param == "project_versions" else project_result)
+    
+    return mock
 
 @pytest.fixture(scope="module")
 def client(mock_db):

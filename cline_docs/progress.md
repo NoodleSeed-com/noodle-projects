@@ -1,69 +1,30 @@
-# Progress Report
+# Progress Update (02/23/2025 22:50 PST)
 
-## Test Status (Updated 2024-02-23)
+## Previously Resolved Test Failure
+- **Test:** test_get_project in `api/tests/integration_tests/test_crud.py`
+- **Error:** AttributeError: 'coroutine' object has no attribute 'status_code'
+- **Resolution:** Converted the `test_get_project` function to an asynchronous function and applied `await` to the `client.post` and `client.get` calls.
+- **Validation:** After applying the fix, running the test suite passed the affected test, with all integration tests now succeeding.
 
-### Test Investigation Progress
-- Identified transaction management issues in test fixtures
-- Implemented session-scoped event loop and engine fixtures
-- Added proper transaction management with db_session fixture
-- Discovered issues with crud.py's transaction handling
-
-### Current Test Status
-1. test_create_project_with_version_0[asyncio/trio]
-   - Issue: InvalidRequestError in crud.py
-   - Error: "Can't operate on closed transaction inside context manager"
-   - Root cause: Multiple commits in create() method conflicting with test transaction
-
-2. test_health_check[asyncio/trio]
-   - Status: PASSING
-   - Fixed by improved transaction management in fixtures
-
-3. test_cors_middleware[asyncio/trio]
-   - Status: PASSING
-   - Fixed by improved transaction management in fixtures
-
-## Recent Changes
-
-1. Project Model Improvements:
-   - Removed duplicate versions relationship
-   - Implemented eager loading with selectin strategy
-   - Simplified latest_version_number calculation
-
-2. Database Access Pattern:
-   - Changed from hybrid_property to regular property
-   - Ensures versions are pre-loaded via selectin strategy
-   - Avoids async operation in property getter
+## Current Test Failure Investigation
+- **Test:** test_partial_version_creation_rollback in `api/tests/unit_tests/test_edge_cases.py`
+- **Error:** AttributeError: 'Project' object has no attribute 'files'
+- **Root Cause:** Mock returning Project instead of ProjectVersion for version queries
+- **Attempted Solutions:**
+  1. Parameter-based mocking (too simplistic)
+  2. Query string inspection (unreliable)
+  3. Query structure inspection (too complex)
+- **Decision:** After multiple attempts to fix the SQLAlchemy mocking approach, decided to:
+  1. Research SQLAlchemy test patterns for complex queries
+  2. Consider mock-alchemy library for better query mocking
+  3. Evaluate moving complex query tests to integration tests
+  4. Document query patterns and expected returns
 
 ## Next Steps
-
-1. Event Loop Management:
-   - Need to investigate event loop configuration in pytest-asyncio
-   - Consider session vs function scope for event loop fixture
-   - Address loop sharing between asyncio and trio tests
-
-2. Transaction Management:
-   - Review transaction isolation in test database setup
-   - Consider AUTOCOMMIT mode for test engine
-   - Implement proper cleanup between tests
-
-3. Connection Handling:
-   - Address concurrent operation issues with asyncpg
-   - Review connection pooling configuration
-   - Implement proper connection cleanup
-
-## Test Infrastructure TODOs
-
-1. Event Loop Configuration:
-   - [ ] Configure proper event loop scope
-   - [ ] Handle loop cleanup between tests
-   - [ ] Address asyncio/trio compatibility
-
-2. Database Setup:
-   - [ ] Review transaction isolation levels
-   - [ ] Implement proper connection pooling
-   - [ ] Add connection cleanup handlers
-
-3. Test Fixtures:
-   - [ ] Refactor test_db fixture for better isolation
-   - [ ] Add error handling in fixtures
-   - [ ] Improve cleanup procedures
+1. Research and evaluate mock-alchemy library
+2. Review integration test patterns for complex SQLAlchemy queries
+3. Document findings in research.md
+4. Make decision on whether to:
+   - Implement new mocking solution with mock-alchemy
+   - Move complex query tests to integration tests
+   - Or pursue alternative approach based on research findings
