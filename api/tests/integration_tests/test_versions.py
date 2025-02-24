@@ -2,7 +2,7 @@ import os
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.crud import projects
-from app.models.project import ProjectCreate
+from app.schemas.project import ProjectCreate
 
 def get_template_files():
     """Helper function to get all files from the template directory."""

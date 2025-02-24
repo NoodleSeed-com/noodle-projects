@@ -1,19 +1,17 @@
-"""Unit tests for concurrent operations using mocked OpenRouter service."""
+"""Tests for concurrent API operations."""
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-from app.models.project import (
-    FileOperation,
-    FileChange
-)
+from ...schemas.common import FileOperation, FileChange
 from tests.common.test_helpers import (
     run_concurrent_requests,
     assert_unique_responses,
     assert_database_constraints,
-    assert_file_constraints
+    assert_file_constraints,
+    assert_response_mix
 )
 
-def test_concurrent_version_creation(client: TestClient, mock_db: Session, mock_openrouter):
+def test_concurrent_version_creation(client: TestClient, mock_openrouter):
     """Test concurrent version creation.
     
     Verifies:
@@ -79,7 +77,7 @@ def test_concurrent_version_creation(client: TestClient, mock_db: Session, mock_
         )
         assert feature_file["content"] == f"export const Feature{i} = () => <div>Feature {i}</div>"
 
-def test_version_creation_constraints(client: TestClient, mock_db: Session, mock_openrouter):
+def test_version_creation_constraints(client: TestClient, mock_openrouter):
     """Test version creation constraints and error handling.
     
     Verifies:
@@ -136,7 +134,7 @@ def test_version_creation_constraints(client: TestClient, mock_db: Session, mock
     )
     assert invalid_response.status_code == 404
 
-def test_file_operation_constraints(client: TestClient, mock_db: Session, test_files, mock_openrouter):
+def test_file_operation_constraints(client: TestClient, mock_openrouter):
     """Test file operation constraints and concurrent access.
     
     Verifies:

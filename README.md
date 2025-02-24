@@ -251,12 +251,12 @@ Test coverage requirements:
 
 ### Key Tables
 - projects: Project metadata and active state
-- project_versions: Version control and relationships
+- versions: Version control and relationships
 - files: Version-specific file content
 
 ### Relationships
-- Project -> ProjectVersion: One-to-Many
-- ProjectVersion -> File: One-to-Many
+- Project -> Version: One-to-Many
+- Version -> File: One-to-Many
 
 ### Security
 

@@ -15,13 +15,13 @@ from app.models.project import (
     FileOperation,
     FileChange,
     ProjectResponse,
-    ProjectVersionResponse,
-    ProjectVersionListItem
+    VersionResponse,
+    VersionListItem
 )
 
 # Type adapters for common validations
 project_list_adapter = TypeAdapter(List[ProjectResponse])
-version_list_adapter = TypeAdapter(List[ProjectVersionListItem])
+version_list_adapter = TypeAdapter(List[VersionListItem])
 
 @pytest.fixture
 def active_project(test_db: Session, client: TestClient) -> dict:
@@ -209,5 +209,5 @@ def test_soft_delete_reactivation(inactive_project: dict, client: TestClient):
     version_response = client.get(f"/api/projects/{project_id}/versions/0")
     assert version_response.status_code == 200
     version_data = version_response.json()
-    version = ProjectVersionResponse(**version_data)
+    version = VersionResponse(**version_data)
     assert version.active is True

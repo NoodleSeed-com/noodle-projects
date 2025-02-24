@@ -19,9 +19,9 @@ def test_version_number_validation(client: TestClient, test_project, test_db):
     project_id = create_response.json()["id"]
     
     # Try to create a version with negative number
-    from app.models.project import ProjectVersion
+    from app.models.project import Version
     with pytest.raises(IntegrityError, match="Version number cannot be negative"):
-        ProjectVersion(
+        Version(
             project_id=project_id,
             version_number=-1,
             name="Invalid Version"
@@ -37,8 +37,8 @@ def test_version_number_uniqueness(client: TestClient, test_project, test_db):
     project2_id = create_response2.json()["id"]
     
     # Add version 1 to first project
-    from app.models.project import ProjectVersion
-    version1 = ProjectVersion(
+    from app.models.project import Version
+    version1 = Version(
         project_id=project1_id,
         version_number=1,
         name="Version 1"
@@ -47,7 +47,7 @@ def test_version_number_uniqueness(client: TestClient, test_project, test_db):
     test_db.commit()
     
     # Same version number (1) should work for different project
-    version2 = ProjectVersion(
+    version2 = Version(
         project_id=project2_id,
         version_number=1,
         name="Version 1 of Project 2"
@@ -56,7 +56,7 @@ def test_version_number_uniqueness(client: TestClient, test_project, test_db):
     test_db.commit()
     
     # But duplicate version number in same project should fail
-    duplicate = ProjectVersion(
+    duplicate = Version(
         project_id=project1_id,
         version_number=1,
         name="Duplicate Version"

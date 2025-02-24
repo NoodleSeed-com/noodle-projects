@@ -64,11 +64,11 @@ The service uses three main tables:
    - `created_at`: Timestamp with timezone
    - `updated_at`: Timestamp with timezone
 
-2. `project_versions` - Stores project versions
+2. `versions` - Stores project versions
    - `id`: UUID (Primary Key)
    - `project_id`: UUID (Foreign Key to projects, CASCADE on delete)
    - `version_number`: Integer (Required, defaults to 0, unique per project)
-   - `parent_version_id`: UUID (Optional, Foreign Key to project_versions)
+   - `parent_version_id`: UUID (Optional, Foreign Key to versions)
    - `name`: Text (Required, defaults to empty string)
    - `created_at`: Timestamp with timezone
    - `updated_at`: Timestamp with timezone
@@ -78,7 +78,7 @@ The service uses three main tables:
 
 3. `files` - Stores files associated with project versions
    - `id`: UUID (Primary Key)
-   - `project_version_id`: UUID (Foreign Key to project_versions)
+   - `version_id`: UUID (Foreign Key to versions)
    - `path`: Text (Required)
    - `content`: Text (Required)
    - `created_at`: Timestamp with timezone
@@ -109,19 +109,19 @@ classDiagram
         +String name
         +Text description
         +Boolean active
-        +List~ProjectVersion~ versions
+        +List~Version~ versions
         +int latest_version_number() <<computed>>
         note for Project "latest_version_number is a hybrid property that returns the highest version_number from the project's versions, or 0 if no versions exist"
     }
     
-    class ProjectVersion {
+    class Version {
         +UUID project_id
         +int version_number
         +UUID parent_version_id
         +String name
         +Project project
         +List~File~ files
-        note for ProjectVersion "- Initial version (0) created with new project
+        note for Version "- Initial version (0) created with new project
         - Parent-child relationship tracked by parent_version_id internally
         - Parent version number exposed in API responses
         - Version numbers must be unique within a project (DB constraint)
@@ -129,10 +129,10 @@ classDiagram
     }
     
     class File {
-        +UUID project_version_id
+        +UUID version_id
         +String path
         +Text content
-        +ProjectVersion version
+        +Version version
     }
 
     %% Pydantic Schemas
@@ -165,8 +165,8 @@ classDiagram
         +create(Session, ProjectCreate) Project
         +update(Session, UUID, ProjectUpdate) Project
         +delete(Session, UUID) Project
-        +get_version(Session, UUID, int) ProjectVersion
-        +get_versions(Session, UUID, int, int) List~ProjectVersion~
+        +get_version(Session, UUID, int) Version
+        +get_versions(Session, UUID, int, int) List~Version~
     }
 
     %% API Endpoints
@@ -176,19 +176,19 @@ classDiagram
         +getProject(id) ProjectResponse
         +updateProject(id) ProjectResponse
         +deleteProject(id) ProjectResponse
-        +listVersions(id) List~ProjectVersionResponse~
-        +getVersion(id, number) ProjectVersionResponse
+        +listVersions(id) List~VersionResponse~
+        +getVersion(id, number) VersionResponse
     }
 
     %% Relationships
     Base <|-- Project
-    Base <|-- ProjectVersion
+    Base <|-- Version
     Base <|-- File
     BaseSchema <|-- ProjectBase
     ProjectBase <|-- ProjectCreate
     ProjectBase <|-- ProjectResponse
-    Project "1" --> "*" ProjectVersion : has
-    ProjectVersion "1" --> "*" File : contains
+    Project "1" --> "*" Version : has
+    Version "1" --> "*" File : contains
     ProjectAPI --> ProjectCRUD : uses
     ProjectCRUD --> Project : manages
     ProjectCreate --> Project : creates
@@ -198,7 +198,7 @@ classDiagram
 
 The diagram shows:
 - Base classes (`Base` and `BaseSchema`) that provide common functionality
-- Domain models (`Project`, `ProjectVersion`, `File`) and their relationships
+- Domain models (`Project`, `Version`, `File`) and their relationships
 - Pydantic schemas for validation and serialization
 - CRUD operations through the `ProjectCRUD` class
 - API endpoints that expose the functionality

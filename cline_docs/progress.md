@@ -1,4 +1,77 @@
-# Progress Update (02/23/2025 22:50 PST)
+# Progress Update (02/24/2025 00:53 PST)
+
+## Test Organization Improvement
+- **Status**: ✅ Complete
+- **Changes Made**:
+  1. Reorganized tests to be co-located with source code:
+     ```
+     api/app/
+     ├── models/
+     │   ├── project.py
+     │   └── tests/              # Model tests
+     │       ├── conftest.py     # Model fixtures
+     │       ├── test_project.py
+     │       ├── test_version.py
+     │       └── test_file.py
+     ├── routes/
+     │   ├── projects.py
+     │   └── tests/              # Route tests
+     │       ├── conftest.py     # Route fixtures
+     │       ├── test_projects.py
+     │       ├── test_versions.py
+     │       └── test_concurrent.py
+     └── services/
+         ├── openrouter.py
+         └── tests/              # Service tests
+             ├── conftest.py     # Service fixtures
+             └── test_openrouter.py
+     ```
+  2. Moved tests from api/tests/unit_tests/ to appropriate locations:
+     * test_openrouter.py -> services/tests/
+     * test_edge_cases.py -> split between routes/tests/ and models/tests/
+     * test_inactive_project.py -> routes/tests/test_projects.py
+     * test_version_changes.py -> routes/tests/test_versions.py
+     * test_concurrent_operations.py -> routes/tests/test_concurrent.py
+  3. Created module-specific conftest.py files with focused fixtures
+  4. Updated documentation:
+     * Added Testing Organization Pattern to systemPatterns.md
+     * Updated project structure in .clinerules
+     * Recorded changes in activeContext.md
+- **Benefits**:
+  * Tests located near code they test
+  * Clear test ownership
+  * Easier test discovery
+  * Module-specific fixtures
+  * Better maintainability
+  * Focused test scope
+
+## Model Organization Improvement
+- **Change:** Separated SQLAlchemy and Pydantic models into distinct layers
+- **Implementation:**
+  1. Created dedicated schema directory for Pydantic models:
+     - `api/app/schemas/base.py`: Base Pydantic schema
+     - `api/app/schemas/common.py`: Shared types and enums
+     - `api/app/schemas/project.py`: Project API schemas
+     - `api/app/schemas/version.py`: Version API schemas
+     - `api/app/schemas/file.py`: File API schemas
+  2. Reorganized SQLAlchemy models:
+     - `api/app/models/base.py`: Base SQLAlchemy model
+     - `api/app/models/project.py`: Project database model
+     - `api/app/models/version.py`: Version database model
+     - `api/app/models/file.py`: File database model
+  3. Updated imports in:
+     - `api/app/projects.py`: Now imports schemas for API layer
+     - `api/app/crud.py`: Separated model and schema imports
+- **Benefits:**
+  - Clear separation of database and API concerns
+  - Better organization of validation logic
+  - Improved maintainability
+  - Easier testing of each layer
+  - Clear responsibility boundaries
+- **Documentation:**
+  - Updated .clinerules with new structure
+  - Added Model Organization Pattern to systemPatterns.md
+  - Recorded changes in activeContext.md
 
 ## Previously Resolved Test Failure
 - **Test:** test_get_project in `api/tests/integration_tests/test_crud.py`
@@ -9,7 +82,7 @@
 ## Current Test Failure Investigation
 - **Test:** test_partial_version_creation_rollback in `api/tests/unit_tests/test_edge_cases.py`
 - **Error:** AttributeError: 'Project' object has no attribute 'files'
-- **Root Cause:** Mock returning Project instead of ProjectVersion for version queries
+- **Root Cause:** Mock returning Project instead of Version for version queries
 - **Attempted Solutions:**
   1. Parameter-based mocking (too simplistic)
   2. Query string inspection (unreliable)
@@ -28,3 +101,83 @@
    - Implement new mocking solution with mock-alchemy
    - Move complex query tests to integration tests
    - Or pursue alternative approach based on research findings
+
+## Completed Tasks
+
+### Test Organization (2024-02-24 00:53 PST)
+- **Status**: ✅ Complete
+- **Changes Made**:
+  1. Reorganized tests to be co-located with source code
+  2. Created module-specific test directories:
+     * models/tests/ for database model tests
+     * routes/tests/ for API endpoint tests
+     * services/tests/ for service tests
+  3. Created focused conftest.py files for each test category
+  4. Moved and reorganized existing tests:
+     * Moved service tests to services/tests/
+     * Split API tests into routes/tests/
+     * Created model tests in models/tests/
+  5. Updated documentation:
+     * Added Testing Organization Pattern to systemPatterns.md
+     * Updated project structure in .clinerules
+     * Recorded changes in activeContext.md
+- **Benefits**:
+  * Better test organization
+  * Clear test ownership
+  * Easier test discovery
+  * Module-specific fixtures
+  * Improved maintainability
+  * Focused test scope
+
+### Version CRUD Refactoring (2024-02-24 00:30 PST)
+- **Status**: ✅ Complete
+- **Changes Made**:
+  1. Split large version.py (11,996 bytes) into focused package:
+     ```
+     api/app/crud/version/
+     ├── __init__.py      # Public interface
+     ├── crud.py          # Core CRUD operations
+     ├── file_operations.py  # File handling
+     └── template.py      # Template management
+     ```
+  2. Separated responsibilities:
+     * Core CRUD operations in crud.py
+     * File validation and changes in file_operations.py
+     * Template handling in template.py
+  3. Created clear public interface in __init__.py
+  4. Removed original version.py file
+  5. Updated documentation:
+     * Added CRUD Module Organization Pattern to systemPatterns.md
+     * Updated active context in activeContext.md
+     * Documented package structure in .clinerules
+- **Benefits**:
+  * Better separation of concerns
+  * Improved maintainability
+  * Easier testing
+  * Clearer code organization
+  * Single responsibility per module
+  * No changes to external API
+
+### Model Organization (2024-02-23 23:42 PST)
+- **Status**: ✅ Complete
+- **Changes Made**:
+  1. Created dedicated schema directory for Pydantic models
+  2. Reorganized SQLAlchemy models into separate files
+  3. Updated imports in all affected files:
+     * api/app/projects.py
+     * api/app/crud.py
+     * api/tests/unit_tests/test_edge_cases.py
+     * api/tests/unit_tests/test_inactive_project.py
+     * api/tests/unit_tests/test_version_changes.py
+     * api/tests/unit_tests/test_openrouter.py
+     * api/tests/integration_tests/test_versions.py
+  4. Updated documentation:
+     * Added Model Organization Pattern to systemPatterns.md
+     * Updated project structure in .clinerules
+     * Updated active context in activeContext.md
+- **Benefits**:
+  * Clear separation of database and API concerns
+  * Better organization of validation logic
+  * Improved maintainability
+  * Easier testing of each layer
+  * Clear responsibility boundaries

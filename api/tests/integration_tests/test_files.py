@@ -1,5 +1,5 @@
 from fastapi.testclient import TestClient
-from app.models.project import ProjectVersion, File
+from app.models.project import Version, File
 from sqlalchemy.exc import IntegrityError
 import pytest
 
@@ -14,7 +14,7 @@ def test_get_specific_version_with_files(client: TestClient, test_project, test_
     initial_version_id = versions_response.json()[0]["id"]
     
     # Create a child version
-    child_version = ProjectVersion(
+    child_version = Version(
         project_id=project_id,
         version_number=1,
         name="Child Version",
@@ -26,7 +26,7 @@ def test_get_specific_version_with_files(client: TestClient, test_project, test_
     # Add files to the version
     for file_data in test_files:
         file = File(
-            project_version_id=child_version.id,
+            version_id=child_version.id,
             path=file_data["path"],
             content=file_data["content"]
         )
@@ -129,7 +129,7 @@ def test_empty_file_path_validation(client: TestClient, test_project, test_db):
     # Test empty path
     with pytest.raises(ValueError) as exc_info:
         File(
-            project_version_id=version_id,
+            version_id=version_id,
             path="",
             content="test content"
         )
@@ -144,7 +144,7 @@ def test_duplicate_file_paths(client: TestClient, test_project, test_db):
     
     # Create first file
     file1 = File(
-        project_version_id=version_id,
+        version_id=version_id,
         path="/test.txt",
         content="content 1"
     )
@@ -153,14 +153,14 @@ def test_duplicate_file_paths(client: TestClient, test_project, test_db):
     
     # Attempt to create second file with same path
     file2 = File(
-        project_version_id=version_id,
+        version_id=version_id,
         path="/test.txt",  # Same path
         content="content 2"
     )
     test_db.add(file2)
     with pytest.raises(IntegrityError) as exc_info:
         test_db.commit()
-    assert "unique_project_version_path" in str(exc_info.value)
+    assert "unique_version_path" in str(exc_info.value)
     test_db.rollback()
 
 def test_file_content_null_validation(client: TestClient, test_project, test_db):
@@ -172,7 +172,7 @@ def test_file_content_null_validation(client: TestClient, test_project, test_db)
     
     # Test that empty string is allowed
     file = File(
-        project_version_id=version_id,
+        version_id=version_id,
         path="/empty.txt",
         content=""
     )
@@ -188,7 +188,7 @@ def test_file_content_null_validation(client: TestClient, test_project, test_db)
     # Test that None/null is not allowed
     with pytest.raises(ValueError) as exc_info:
         File(
-            project_version_id=version_id,
+            version_id=version_id,
             path="/test.txt",
             content=None
         )
@@ -204,7 +204,7 @@ def test_file_content_limits(client: TestClient, test_project, test_db):
     # Test 1MB file content
     content = "x" * (1 * 1024 * 1024)  # 1MB
     file = File(
-        project_version_id=version_id,
+        version_id=version_id,
         path="/large.txt",
         content=content
     )

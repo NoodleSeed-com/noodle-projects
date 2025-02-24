@@ -17,7 +17,7 @@ from app.config import get_db, settings
 
 from datetime import datetime
 from uuid import uuid4
-from app.models.project import Project, ProjectVersion, File
+from app.models.project import Project, Version, File
 
 @pytest.fixture(scope="module")
 def mock_project():
@@ -35,8 +35,8 @@ def mock_project():
 
 @pytest.fixture(scope="module")
 def mock_version(mock_project):
-    """Mock ProjectVersion instance for testing."""
-    version = ProjectVersion(
+    """Mock Version instance for testing."""
+    version = Version(
         id=uuid4(),
         project_id=mock_project.id,
         version_number=0,  # This is correct - initial version is 0
@@ -57,7 +57,7 @@ def mock_version(mock_project):
     ]
     # Set up bidirectional relationships
     for file in version.files:
-        file.project_version_id = version.id
+        file.version_id = version.id
         file.version = version
     
     # Set up project relationship
@@ -66,7 +66,7 @@ def mock_version(mock_project):
     
     return version
 
-@pytest.fixture(scope="module", params=["projects", "project_versions"])
+@pytest.fixture(scope="module", params=["projects", "versions"])
 def mock_db(request, mock_project, mock_version):
     """Parameterized fixture for different return types."""
     mock = AsyncMock()
@@ -105,7 +105,7 @@ def mock_db(request, mock_project, mock_version):
     version_result.all = lambda: [(mock_version.id, mock_version.version_number, mock_version.name)]
 
     # Configure execute to return appropriate result
-    mock.execute = AsyncMock(return_value=version_result if request.param == "project_versions" else project_result)
+    mock.execute = AsyncMock(return_value=version_result if request.param == "versions" else project_result)
     
     return mock
 

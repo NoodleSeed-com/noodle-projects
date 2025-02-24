@@ -1,184 +1,280 @@
 # System Patterns
 
-## Project State Management
+## Test Organization Patterns
 
-### Active State Inheritance
-1. Project Level:
-   - Single source of truth for active state
-   - Boolean active flag in projects table
-   - Default value: true
-   - Soft deletion sets active=false
-   - Reactivation allowed through update endpoint
+### Co-located Tests Pattern
+Tests are organized close to the code they test, following a consistent structure:
 
-2. State Inheritance:
-   - Versions inherit active state from project
-   - No independent version activation
-   - Files accessed through version context only
-   - No direct file-level operations
+```
+api/app/
+├── models/
+│   ├── __init__.py
+│   ├── model.py
+│   └── tests/              # Model tests
+│       ├── conftest.py     # Model-specific fixtures
+│       └── test_model.py
+├── routes/
+│   ├── __init__.py
+│   ├── route.py
+│   └── tests/              # Route tests
+│       ├── conftest.py     # Route-specific fixtures
+│       └── test_route.py
+└── services/
+    ├── __init__.py
+    ├── service.py
+    └── tests/              # Service tests
+        ├── conftest.py     # Service-specific fixtures
+        └── test_service.py
+```
 
-3. Operation Rules:
-   - Write operations blocked on inactive projects:
-     * Creating new versions
-     * Modifying project details
-     * Any file operations
-   - Read operations allowed but show inactive state
-   - Reactivation only through project update endpoint
-   - State changes cascade through relationships
+Benefits:
+1. Improved Discoverability:
+   - Tests are easy to find
+   - Clear relationship to source code
+   - Natural navigation
 
-4. Implementation Requirements:
-   - Check project.active before write operations
-   - Return 403 Forbidden for writes to inactive projects
-   - Include active state in version responses
-   - Maintain single source of truth pattern
+2. Clear Ownership:
+   - Tests belong to module
+   - Module owners maintain tests
+   - Focused responsibility
 
-### Version Listing Behavior
-1. Active Projects:
-   - List all versions ordered by version number
-   - Include essential version metadata:
-     * id: UUID
-     * version_number: Sequential number
-     * name: Version name
-   - Support pagination parameters
+3. Better Maintainability:
+   - Tests move with code
+   - Easier refactoring
+   - Reduced coupling
 
-2. Inactive Projects:
-   - Return empty version list
-   - Maintain consistent response structure
-   - No error response needed
+4. Direct Context:
+   - Tests have access to internals
+   - Easier mocking
+   - Better isolation
 
-3. Version Response Patterns:
-   - Detailed version responses include active state
-   - List responses exclude active state (inherited)
-   - Files included only in detailed responses
+### Test Database Setup Patterns
 
-## API Design Patterns
+1. Module-Level Database:
+   ```python
+   @pytest.fixture(scope="module")
+   def test_db(test_engine):
+       Base.metadata.drop_all(bind=test_engine)
+       Base.metadata.create_all(bind=test_engine)
+       TestingSessionLocal = sessionmaker(...)
+       db = TestingSessionLocal()
+       yield db
+       db.close()
+       Base.metadata.drop_all(bind=test_engine)
+   ```
 
-### HTTP Methods
-1. Supported Operations:
-   - GET: Read operations
-   - POST: Create operations
-   - PUT: Update operations
-   - DELETE: Soft deletion
-   
-2. Unsupported Operations:
-   - PATCH: Not implemented
-   - Direct file operations: Handled through versions
+   Considerations:
+   - Handle foreign key constraints
+   - Manage transaction isolation
+   - Clean state between tests
+   - Proper cleanup on failure
 
-### Response Patterns
-1. Success Responses:
-   - 200: Successful operations
-   - 201: Resource creation
+2. Test-Level Transactions:
+   ```python
+   @pytest.fixture
+   def db_session(test_db):
+       test_db.begin_nested()  # Create savepoint
+       yield test_db
+       test_db.rollback()      # Rollback to savepoint
+       test_db.expire_all()
+   ```
 
-2. Error Responses:
-   - 403: Operations on inactive projects
-   - 404: Resource not found
-   - 422: Invalid input validation
+   Benefits:
+   - Isolated test state
+   - Automatic cleanup
+   - No cross-test pollution
+   - Fast execution
 
-### Validation Patterns
-1. Project State:
-   - Validate active state before write operations
-   - Allow reactivation regardless of state
-   - Block other modifications when inactive
+### Test Coverage Patterns
 
-2. Version Operations:
-   - Validate parent version exists
-   - Check project active state
-   - Validate file operations within version context
+1. Coverage Goals:
+   - 100% for models
+   - 100% for critical paths
+   - 80% minimum overall
+   - Focus on business logic
 
-## File Management
+2. Coverage Strategy:
+   - Start with model tests
+   - Add route tests
+   - Cover service layer
+   - Integration tests last
 
-### File Operations
-1. Version-Centric:
-   - Files belong to specific versions
-   - No direct file endpoints
-   - Changes create new versions
-   - Files immutable within versions
+3. Test Categories:
+   - Unit Tests: Direct module testing
+   - Integration Tests: Cross-module flows
+   - End-to-End: Full system tests
+   - Performance Tests: Load testing
 
-2. File Validation:
-   - Path uniqueness within version
-   - Non-empty path requirement
-   - Content validation
-   - Path format validation
+### Test Naming Patterns
 
-### Version Creation
-1. Process:
-   - Copy parent version files
-   - Apply requested changes
-   - Create new version number
-   - Store complete file set
+1. File Names:
+   - test_*.py for test files
+   - conftest.py for fixtures
+   - __init__.py for organization
 
-2. Change Types:
-   - Create: Add new file
-   - Update: Modify existing file
-   - Delete: Remove file from version
+2. Test Names:
+   - test_*() for test functions
+   - Descriptive names
+   - Action_Result pattern
+   - Include_Scenario pattern
 
-## Testing Patterns
+3. Fixture Names:
+   - Descriptive purpose
+   - Module prefix when needed
+   - Indicate scope if relevant
+   - Document dependencies
 
-### State Testing
-1. Project State:
-   - Test active/inactive transitions
-   - Verify operation restrictions
-   - Check state inheritance
-   - Validate reactivation
+### Test Documentation Patterns
 
-2. Version Testing:
-   - Test version listing behavior
-   - Verify state inheritance
-   - Check operation restrictions
-   - Test pagination
+1. Test Docstrings:
+   ```python
+   def test_version_creation(db_session):
+       """Test version creation.
+       
+       Verifies:
+       1. Version attributes set correctly
+       2. Relationships established
+       3. Constraints enforced
+       4. Events triggered
+       """
+   ```
 
-### Response Testing
-1. Schema Validation:
-   - Verify response formats
-   - Check required fields
-   - Validate type constraints
-   - Test optional fields
+2. Fixture Documentation:
+   ```python
+   @pytest.fixture
+   def test_db():
+       """Provide clean database for each module.
+       
+       Handles:
+       - Table creation
+       - Data cleanup
+       - Transaction isolation
+       - Resource cleanup
+       """
+   ```
 
-2. Error Handling:
-   - Test invalid operations
-   - Verify error messages
-   - Check status codes
-   - Validate error formats
+### Test Fixture Patterns
 
-## Error Handling Patterns
+1. Scope Hierarchy:
+   - Session: Entire test run
+   - Module: Single test file
+   - Class: Test class
+   - Function: Single test
 
-### Service Layer Errors
-1. OpenRouter Service:
-   - Validate file paths before processing
-   - Check for duplicate paths in changes
-   - Raise ValueError for validation failures
-   - Maintain consistent error messages
+2. Dependency Chain:
+   ```python
+   @pytest.fixture(scope="session")
+   def test_engine():
+       """Database engine for tests."""
+       
+   @pytest.fixture(scope="module")
+   def test_db(test_engine):
+       """Module database from engine."""
+       
+   @pytest.fixture
+   def db_session(test_db):
+       """Test transaction from database."""
+   ```
 
-2. Error Propagation:
-   - Catch service errors at API layer
-   - Convert to appropriate HTTP status codes:
-     * ValueError -> 400 Bad Request
-     * IntegrityError -> 409 Conflict
-     * OperationalError -> 503 Service Unavailable
-   - Maintain transaction integrity
-   - Roll back on failure
+3. Resource Management:
+   - Proper cleanup
+   - Error handling
+   - Resource sharing
+   - State isolation
 
-### Transaction Management
-1. Rollback Patterns:
-   - Roll back on validation errors
-   - No partial state persistence
-   - Maintain database consistency
-   - Clear error reporting
+### Test Isolation Patterns
 
-2. Edge Case Handling:
-   - Handle duplicate paths
-   - Validate file operations
-   - Check version constraints
-   - Maintain referential integrity
+1. Database Isolation:
+   - Transaction rollback
+   - Separate test database
+   - Clean state per test
+   - No shared state
 
-### Testing Strategy
-1. Error Scenarios:
-   - Test validation failures
-   - Verify error propagation
-   - Check transaction rollback
-   - Validate error responses
+2. Service Isolation:
+   - Mock external services
+   - Stub responses
+   - Control timing
+   - Error simulation
 
-2. Mock Integration:
-   - Use FastAPI dependency overrides
-   - Mock service responses
-   - Simulate error conditions
-   - Verify error handling flow
+3. Environment Isolation:
+   - Test-specific config
+   - Controlled randomness
+   - Time manipulation
+   - Path isolation
+
+### Error Handling Patterns
+
+1. Expected Errors:
+   ```python
+   with pytest.raises(ValueError) as exc:
+       # Test code that should raise error
+   assert str(exc.value) == "Expected message"
+   ```
+
+2. Database Errors:
+   ```python
+   with pytest.raises(IntegrityError):
+       # Test constraint violation
+   ```
+
+3. Async Errors:
+   ```python
+   with pytest.raises(AsyncError):
+       await async_operation()
+   ```
+
+### Test Data Patterns
+
+1. Factory Functions:
+   ```python
+   def create_test_version(db, **kwargs):
+       """Create test version with defaults."""
+       defaults = {
+           "name": "Test Version",
+           "number": 1
+       }
+       defaults.update(kwargs)
+       return Version(**defaults)
+   ```
+
+2. Fixture Data:
+   ```python
+   @pytest.fixture
+   def sample_data():
+       return {
+           "name": "Test",
+           "value": 123
+       }
+   ```
+
+3. Test Constants:
+   ```python
+   TEST_ID = UUID("550e8400-e29b-41d4-a716-446655440000")
+   TEST_NAME = "Test Project"
+   ```
+
+## Lessons Learned
+
+1. Database Setup:
+   - Handle constraints properly
+   - Use transactions for isolation
+   - Clean up resources
+   - Maintain test independence
+
+2. Test Organization:
+   - Co-locate with source
+   - Clear ownership
+   - Focused scope
+   - Easy navigation
+
+3. Coverage Strategy:
+   - Start with models
+   - Add routes
+   - Cover services
+   - End-to-end last
+
+4. Documentation:
+   - Clear purpose
+   - Verification points
+   - Setup requirements
+   - Expected results

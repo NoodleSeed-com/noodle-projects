@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from . import projects
+from .routes import router as api_router
 
 # Create FastAPI application
 app = FastAPI(
@@ -23,11 +23,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
+# Include API router
 app.include_router(
-    projects.router,
-    prefix=f"{settings.API_PREFIX}/projects",
-    tags=["projects"]
+    api_router,
+    prefix=settings.API_PREFIX
 )
 
 @app.get("/health")

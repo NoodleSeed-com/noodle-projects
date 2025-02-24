@@ -1,20 +1,10 @@
-"""Unit tests for edge cases and error scenarios using mocked OpenRouter service."""
+"""Tests for project routes."""
 import pytest
-from concurrent.futures import ThreadPoolExecutor
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError, OperationalError
-from unittest.mock import MagicMock
-from app.models.project import (
-    ProjectCreate,
-    ProjectResponse,
-    ProjectVersionResponse,
-    FileOperation,
-    FileChange
-)
-from app.crud import projects
-from app.main import app
-from app.services.openrouter import get_openrouter
+from ...schemas.common import FileOperation, FileChange
+from ...schemas.project import ProjectResponse
+from ...schemas.version import VersionResponse
 from tests.common.test_helpers import (
     run_concurrent_requests,
     assert_unique_responses,
@@ -23,7 +13,130 @@ from tests.common.test_helpers import (
     assert_file_constraints
 )
 
-def test_partial_version_creation_rollback(client: TestClient, mock_db: Session, mock_openrouter):
+def test_inactive_project_operations(client: TestClient, mock_openrouter):
+    """Test operations on inactive projects.
+    
+    Verifies:
+    1. Cannot create new versions on inactive project
+    2. Cannot modify inactive project
+    3. Cannot perform any write operations
+    4. Proper error responses returned with correct structure
+    """
+    # Create and deactivate a project
+    project = client.post("/api/projects/", json={
+        "name": "Inactive Project",
+        "description": "Test Description"
+    }).json()
+    
+    delete_response = client.delete(f"/api/projects/{project['id']}")
+    assert delete_response.status_code == 200
+    inactive_project = delete_response.json()
+    project_id = inactive_project["id"]
+
+    # Test all write operations
+    operations = [
+        # Attempt to create version
+        ("POST", f"/api/projects/{project_id}/versions", {
+            "name": "New Feature",
+            "parent_version_number": 0,
+            "project_context": "Adding feature to inactive project",
+            "change_request": "Create feature"
+        }),
+        # Attempt to modify project
+        ("PUT", f"/api/projects/{project_id}", {
+            "name": "New Name",
+            "description": "New description"
+        })
+    ]
+
+    mock_openrouter.get_file_changes.return_value = [
+        FileChange(
+            operation=FileOperation.CREATE,
+            path="src/Feature.tsx",
+            content="export const Feature = () => <div>Feature</div>"
+        )
+    ]
+
+    # Verify all operations fail with proper error structure
+    for method, url, data in operations:
+        response = client.request(method, url, json=data)
+        assert response.status_code == 403
+        error = response.json()
+        assert "detail" in error
+        assert "inactive" in error["detail"].lower()
+        assert isinstance(error["detail"], str)
+
+def test_inactive_version_operations(client: TestClient, mock_openrouter):
+    """Test operations on versions of inactive projects.
+    
+    Verifies:
+    1. Cannot create new versions from inactive project versions
+    2. Read operations still work but show inactive state
+    3. Error responses have correct structure
+    """
+    # Create project with version
+    project = client.post("/api/projects/", json={
+        "name": "Project with Version",
+        "description": "Test Description"
+    }).json()
+
+    # Create version
+    mock_openrouter.get_file_changes.return_value = [
+        FileChange(
+            operation=FileOperation.CREATE,
+            path="src/Feature.tsx",
+            content="export const Feature = () => <div>Feature</div>"
+        )
+    ]
+    version_response = client.post(
+        f"/api/projects/{project['id']}/versions",
+        json={
+            "name": "Test Version",
+            "parent_version_number": 0,
+            "project_context": "Adding feature",
+            "change_request": "Create feature"
+        }
+    )
+    assert version_response.status_code == 200
+    version = version_response.json()
+    project_id = project["id"]
+    version_number = version["version_number"]
+
+    # Soft delete project
+    client.delete(f"/api/projects/{project_id}")
+
+    # Attempt to create new version from inactive project's version
+    mock_openrouter.get_file_changes.return_value = [
+        FileChange(
+            operation=FileOperation.CREATE,
+            path="src/NewFeature.tsx",
+            content="export const NewFeature = () => <div>New Feature</div>"
+        )
+    ]
+    
+    response = client.post(
+        f"/api/projects/{project_id}/versions",
+        json={
+            "name": "New Feature",
+            "parent_version_number": version_number,
+            "project_context": "Adding feature to inactive project",
+            "change_request": "Create feature"
+        }
+    )
+    assert response.status_code == 403
+    error = response.json()
+    assert "detail" in error
+    assert "inactive" in error["detail"].lower()
+    assert isinstance(error["detail"], str)
+
+    # Verify read operations work but show inactive state
+    version_response = client.get(f"/api/projects/{project_id}/versions/{version_number}")
+    assert version_response.status_code == 200
+    version_data = version_response.json()
+    version = VersionResponse(**version_data)
+    assert version.active is False
+
+def test_partial_version_creation_rollback(client: TestClient, mock_openrouter):
     """Test transaction rollback on partial version creation failure.
     
     Verifies:
@@ -41,13 +154,7 @@ def test_partial_version_creation_rollback(client: TestClient, mock_db: Session,
     project_id = response.json()["id"]
     
     # Configure mock service to raise ValueError
-    async def mock_service():
-        mock = MagicMock()
-        mock.get_file_changes.side_effect = ValueError("Duplicate file paths found in changes")
-        return mock
-    
-    # Override the dependency
-    app.dependency_overrides[get_openrouter] = mock_service
+    mock_openrouter.get_file_changes.side_effect = ValueError("Duplicate file paths found in changes")
     
     # Attempt version creation that will fail
     response = client.post(
@@ -67,61 +174,7 @@ def test_partial_version_creation_rollback(client: TestClient, mock_db: Session,
     versions = versions_response.json()
     assert len(versions) == 1  # Only initial version exists
 
-def test_concurrent_connection_pool_exhaustion(client: TestClient, mock_db: Session, mock_openrouter):
-    """Test behavior when connection pool is exhausted.
-    
-    Verifies:
-    1. System handles pool exhaustion gracefully
-    2. Requests queue properly
-    3. No deadlocks occur
-    4. Error responses are correct
-    """
-    # Create test project
-    response = client.post("/api/projects/", json={
-        "name": "Test Project",
-        "description": "Testing pool exhaustion"
-    })
-    assert response.status_code == 201
-    project_id = response.json()["id"]
-    
-    # Configure mock for many version creations
-    mock_openrouter.get_file_changes.return_value = [
-        FileChange(
-            operation=FileOperation.CREATE,
-            path="src/test.tsx",
-            content="export const Test = () => <div>Test</div>"
-        )
-    ]
-    
-    # Function to create version
-    def create_version(i: int):
-        return client.post(
-            f"/api/projects/{project_id}/versions",
-            json={
-                "name": f"Version {i}",
-                "parent_version_number": 0,
-                "project_context": "Testing pool",
-                "change_request": "Create version"
-            }
-        )
-    
-    # Create many versions concurrently to exhaust pool
-    responses = run_concurrent_requests(
-        client,
-        create_version,
-        count=3,
-        max_workers=3
-    )
-    
-    # Some requests should succeed, others should fail gracefully
-    success_count = sum(1 for r in responses if r.status_code == 200)
-    error_count = sum(1 for r in responses if r.status_code in (503, 429))
-    
-    assert success_count > 0, "No requests succeeded"
-    assert error_count > 0, "No requests failed due to pool exhaustion"
-    assert all(r.status_code in (200, 503, 429) for r in responses)
-
-def test_concurrent_version_state_race(client: TestClient, mock_db: Session, mock_openrouter):
+def test_concurrent_version_state_race(client: TestClient, mock_openrouter):
     """Test race conditions in version state updates.
     
     Verifies:
@@ -180,7 +233,7 @@ def test_concurrent_version_state_race(client: TestClient, mock_db: Session, moc
     final_state = final_response.json()
     assert final_state["name"].startswith("Updated Name")
 
-def test_idempotent_version_creation(client: TestClient, mock_db: Session, mock_openrouter):
+def test_idempotent_version_creation(client: TestClient, mock_openrouter):
     """Test idempotent version creation under concurrent requests.
     
     Verifies:
@@ -235,7 +288,7 @@ def test_idempotent_version_creation(client: TestClient, mock_db: Session, mock_
     versions = versions_response.json()
     assert len(versions) == 2  # Initial version + 1 new version
 
-def test_file_operation_compensation(client: TestClient, mock_db: Session, mock_openrouter):
+def test_file_operation_compensation(client: TestClient, mock_openrouter):
     """Test compensation for failed file operations.
     
     Verifies:

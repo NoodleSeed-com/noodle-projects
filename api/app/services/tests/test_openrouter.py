@@ -2,8 +2,9 @@
 import os
 import pytest
 from unittest.mock import patch, MagicMock
-from app.services.openrouter import OpenRouterService, _read_prompt_file
-from app.models.project import FileResponse, FileOperation, FileChange
+from ...services.openrouter import OpenRouterService, _read_prompt_file
+from ...schemas.file import FileResponse
+from ...schemas.common import FileOperation, FileChange
 from pathlib import Path
 from openai import OpenAIError, APITimeoutError, RateLimitError
 

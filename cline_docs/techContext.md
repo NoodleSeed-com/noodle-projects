@@ -49,14 +49,14 @@
 
 2. Database Level:
    - CHECK constraint: `length(path) > 0`
-   - UNIQUE constraint on (project_version_id, path)
+   - UNIQUE constraint on (version_id, path)
    - Enforces path uniqueness within versions
    - Allows same path across different versions
    - Implemented in both SQLAlchemy model and database schema
 
 ### Version Number Validation
 1. Model Level:
-   - Validation in ProjectVersion.__init__
+   - Validation in Version.__init__
    - Raises IntegrityError for negative numbers
    - Early validation before database operations
    - Clear error messages for debugging
@@ -144,7 +144,7 @@
            with open(file_path, 'r') as f:
                content = f.read()
            db_file = File(
-               project_version_id=version.id,
+               version_id=version.id,
                path=relative_path,
                content=content
            )

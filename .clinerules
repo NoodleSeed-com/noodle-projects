@@ -13,64 +13,106 @@
 - Document all functions and classes
 - Follow PEP 8 guidelines
 
+### Test Organization Standards
+1. Co-located Tests:
+   ```
+   api/app/[module]/
+   ├── __init__.py
+   ├── module.py
+   └── tests/
+       ├── __init__.py
+       ├── conftest.py
+       └── test_*.py
+   ```
+
+2. Test File Naming:
+   - test_*.py for test files
+   - conftest.py for fixtures
+   - Clear relationship to tested code
+
+3. Test Categories:
+   - Unit tests with source code
+   - Integration tests in api/tests/
+   - Common utilities in api/tests/common/
+
+4. Test Documentation:
+   - Clear docstrings
+   - Verification points
+   - Setup requirements
+   - Expected outcomes
+
+### Database Test Setup
+1. Test Database Requirements:
+   - Use separate test database
+   - Handle foreign key constraints
+   - Proper transaction isolation
+   - Clean state between tests
+
+2. Fixture Hierarchy:
+   ```python
+   @pytest.fixture(scope="session")
+   def test_engine():
+       """Database engine for tests."""
+       
+   @pytest.fixture(scope="module")
+   def test_db(test_engine):
+       """Module database from engine."""
+       
+   @pytest.fixture
+   def db_session(test_db):
+       """Test transaction from database."""
+   ```
+
+3. Test Isolation:
+   - Use transaction savepoints
+   - Rollback after each test
+   - No shared state
+   - Clean resources
+
+4. Error Handling:
+   - Proper constraint handling
+   - Transaction management
+   - Resource cleanup
+   - State reset
+
+### CRUD Module Organization
+1. Package Structure:
+   - Split large CRUD modules (>10,000 bytes) into packages
+   - Example structure:
+     ```
+     api/app/crud/[module]/
+     ├── __init__.py      # Public interface
+     ├── crud.py          # Core operations
+     └── [feature].py     # Specific features
+     ```
+   - Keep files under 5,000 bytes when possible
+   - Maintain clear public interface in __init__.py
+
+2. Responsibility Separation:
+   - Core CRUD operations in crud.py
+   - Feature-specific logic in dedicated files
+   - Clear separation of concerns
+   - Single responsibility per module
+
+3. Implementation Requirements:
+   - Document module responsibilities
+   - Use __init__.py to expose public API
+   - Maintain backward compatibility
+   - Follow consistent naming patterns
+   - Add proper type hints and docstrings
+
+4. When to Apply:
+   - CRUD modules over 10,000 bytes
+   - Multiple distinct responsibilities
+   - Complex validation logic
+   - Separate concerns exist
+   - Testing would benefit from separation
+
 ### API Design
 - RESTful endpoints
 - Clear resource hierarchy
 - Consistent response formats
 - Proper status code usage
-
-#### Version Response Structure
-```json
-{
-  "id": "uuid",
-  "project_id": "uuid",
-  "version_number": 0,
-  "name": "string",
-  "parent_version_id": "uuid",
-  "parent_version": 0,
-  "created_at": "datetime",
-  "updated_at": "datetime",
-  "files": [
-    {
-      "id": "uuid",
-      "path": "string",
-      "content": "string"
-    }
-  ]
-}
-```
-
-#### File Handling Patterns
-- Files are always associated with specific versions
-- Files are eagerly loaded with versions to prevent N+1 queries
-- File paths must be relative to project root
-- Empty files array ([]) returned for versions with no files
-- Files are included in version responses but not in version list responses
-
-### File Validation Rules
-- Empty paths are rejected at application level with ValueError
-- File paths must be unique within a version (enforced by database constraint)
-- Duplicate paths are allowed across different versions
-- Path validation occurs before database operations
-- Database constraints provide additional safety layer
-
-### Version 0 Template Rules
-- Every new project starts with version 0 from template
-- Template directory structure is preserved exactly
-- All files from template are copied without modification
-- File paths remain relative to project root
-- Template changes require corresponding test updates
-- Template system is tested for both structure and content
-
-### Version Number Validation Rules
-- Negative numbers are rejected at model level with IntegrityError
-- Version numbers must be unique within a project
-- Version 0 is reserved for initial version
-- Validation occurs at multiple layers:
-  * Model level: Early validation in __init__
-  * Database level: CHECK constraint
-  * API level: Path parameter validation
-- Clear error messages for debugging
 
 ### Database
 - Use UUID primary keys
@@ -78,45 +120,6 @@
 - Implement soft deletion through active flag
 - Maintain referential integrity
 - Use appropriate indexes
-
-#### Active State Management
-1. Project Level:
-   - Single source of truth for active state
-   - Boolean active flag in projects table
-   - Default value: true
-   - Soft deletion sets active=false
-   - Reactivation allowed through update endpoint
-
-2. State Inheritance:
-   - Versions inherit active state from project
-   - No independent version activation
-   - Files accessed through version context only
-   - No direct file-level operations
-
-3. Operation Rules:
-   - Write operations blocked on inactive projects:
-     * Creating new versions
-     * Modifying project details
-     * Any file operations
-   - Read operations allowed but show inactive state
-   - Reactivation only through project update endpoint
-   - State changes cascade through relationships
-
-4. Implementation Requirements:
-   - Check project.active before write operations
-   - Return 403 Forbidden for writes to inactive projects
-   - Include active state in version responses
-   - Maintain single source of truth pattern
-
-#### Database Relationships
-- Project -> ProjectVersion: One-to-Many
-  - Cascade delete from project to versions
-  - Unique version numbers per project
-  - Version 0 is always initial version
-- ProjectVersion -> File: One-to-Many
-  - Cascade delete from version to files
-  - Files belong to exactly one version
-  - No file versioning (files are immutable per version)
 
 ### Documentation
 - Document all schema changes
@@ -147,35 +150,17 @@
    - Define service dependencies at module level
    - Use get_* functions for FastAPI dependencies
    - Import dependencies, not service instances
-   - Example:
-     ```python
-     # BAD:
-     from .services import service_instance
-     
-     # GOOD:
-     from .services import get_service
-     ```
 
 2. Service Testing:
    - Mock services through dependency injection
    - Override dependencies in test fixtures
    - Clear overrides after tests
-   - Use flexible assertion patterns:
-     ```python
-     # BAD:
-     mock.assert_called_once_with(exact_args)
-     
-     # GOOD:
-     mock.assert_called_once()
-     args = mock.call_args[1]
-     assert args["param"] == expected
-     ```
+   - Use flexible assertion patterns
 
 3. Service Context:
    - Pass relevant context to services
    - Include current state in service calls
    - Document required context parameters
-   - Example: Pass current files when requesting changes
 
 ### Service Error Handling
 1. Status Code Mapping:
@@ -204,158 +189,6 @@
    - Check transaction rollback
    - Validate error responses
    - Mock service errors
-
-### Service Testing
-1. Dependency Injection:
-   - Use FastAPI dependency overrides
-   - Mock service responses
-   - Test error conditions
-   - Verify error handling flow
-
-2. Mock Patterns:
-   - Override service dependencies
-   - Simulate error conditions
-   - Test transaction rollback
-   - Verify state consistency
-
-3. Testing Requirements:
-   - Test success paths
-   - Test error paths
-   - Verify error propagation
-   - Check transaction integrity
-   - Validate error responses
-
-4. Best Practices:
-   - Use dependency injection
-   - Avoid direct imports
-   - Configure test mode behavior
-   - Document mocking requirements
-   - Use pytest fixtures
-   - Test edge cases
-   - Clear mock overrides
-
-#### Test Structure
-```
-api/tests/
-├── __init__.py                # Make tests a package
-├── conftest.py                # Global test configuration
-├── test.env                   # Test environment variables
-├── unit_tests/                # Tests using mocks
-│   ├── conftest.py           # Unit test fixtures
-│   ├── test_edge_cases.py    # Error scenarios
-│   ├── test_concurrent_operations.py  # Concurrent tests
-│   └── test_inactive_project.py      # State management
-└── integration_tests/         # Tests with real dependencies
-    ├── conftest.py           # Integration test fixtures
-    ├── test_concurrent.py    # Concurrent operations
-    ├── test_integration.py   # End-to-end flows
-    └── test_validation.py    # Input validation
-```
-
-#### Test Organization Rules
-1. Unit Tests (unit_tests/):
-   - Use mock_db fixture
-   - Mock external services
-   - Test specific behaviors
-   - Focus on edge cases
-   - Verify error handling
-
-2. Integration Tests (integration_tests/):
-   - Use test_db fixture
-   - Real database operations
-   - End-to-end flows
-   - Component interactions
-   - State management
-
-3. Concurrent Testing:
-   - Start with low concurrency (3 requests)
-   - Use max_workers to control thread pool
-   - Add transaction completion checks:
-     ```python
-     # Wait for transactions to complete
-     for response in responses:
-         if response.status_code == 200:
-             client.get(f"/api/projects/{project_id}")
-     ```
-   - Handle SQLAlchemy state changes
-   - Verify final state
-
-4. Response Validation:
-   - Include all required fields:
-     ```python
-     {
-       "id": "uuid",
-       "active": true,
-       "created_at": "datetime",
-       "updated_at": "datetime"
-     }
-     ```
-   - Use proper types
-   - Handle validation errors
-   - Test error responses
-
-#### Test Configuration
-- Use separate test database in Supabase
-- Load test environment from test.env
-- Create fixtures for:
-  - Database engine
-  - Test database session
-  - FastAPI test client
-  - Test data
-
-#### Test Patterns
-1. Database Tests
-   - Create test database for each session
-   - Clean up after each test
-   - Use transactions for isolation
-   - Test CRUD operations
-
-2. API Tests
-   - Test all endpoints
-   - Verify response codes
-   - Validate response data
-   - Test error cases
-
-3. Naming Conventions
-   - Test files: test_*.py
-   - Test functions: test_*
-   - Fixtures: descriptive names
-
-4. Best Practices
-   - One assertion per test when possible
-   - Use fixtures for setup/teardown
-   - Mock external services
-   - Test edge cases
-   - Maintain test isolation
-
-#### Test Commands
-```bash
-# Run all tests
-pytest
-
-# Run with coverage
-pytest --cov=api/app api/tests/ -v
-
-# Run specific test category
-pytest api/tests/test_main.py -v                          # Main app tests
-pytest api/tests/test_projects/test_crud.py -v            # CRUD operations
-pytest api/tests/test_projects/test_validation.py -v      # Input validation
-pytest api/tests/test_projects/test_versions.py -v        # Version management
-pytest api/tests/test_projects/test_files.py -v           # File handling
-pytest api/tests/test_projects/test_edge_cases.py -v      # Edge cases
-
-# Run all project tests
-pytest api/tests/test_projects/ -v
-
-# Run all tests including main app tests
-pytest api/tests/ -v
-```
-
-#### Coverage Requirements
-- Minimum 80% overall coverage
-- 100% coverage for models
-- 100% coverage for critical paths
-- Track coverage in CI/CD
 
 ## Project Dependencies
 - Python 3.11+
@@ -436,48 +269,22 @@ supabase stop
 ```
 
 ### Testing
+```bash
+# Run all tests
+pytest
 
-- **Consistency is Key:** Ensure that your application code and test code are both synchronous.
-- **Test Database:** Use a separate database for testing to avoid interfering with development or production data. Configure the test database URL in a separate environment file (e.g., `api/tests/test.env`).
-- **Fixtures:** Use pytest fixtures (`conftest.py`) to manage test setup (e.g., creating database tables) and teardown (e.g., dropping tables).  Use appropriate fixture scopes (e.g., `session` or `module`) to control when fixtures are executed.
-- **FastAPI TestClient:** Use FastAPI's `TestClient` for making requests to your API endpoints in tests.
-- **Example (Synchronous):**
-  ```python
-  # conftest.py
-  import pytest
-  from fastapi.testclient import TestClient
-  from sqlalchemy import create_engine
-  from sqlalchemy.orm import sessionmaker
-  from app.main import app
-  from app.config import get_db, settings
-  from app.models.base import Base
+# Run with coverage
+pytest --cov=api/app api/tests/ -v
 
-  @pytest.fixture(scope="session")
-  def test_engine():
-      db_url = str(settings.DATABASE_URL).replace("+asyncpg", "") # Make sure it is sync
-      engine = create_engine(db_url, echo=True)
-      return engine
+# Run specific test category
+pytest api/app/models/tests/ -v                # Model tests
+pytest api/app/routes/tests/ -v                # Route tests
+pytest api/app/services/tests/ -v              # Service tests
+pytest api/tests/integration_tests/ -v         # Integration tests
 
-  @pytest.fixture(scope="module")
-  def test_db(test_engine):
-      Base.metadata.drop_all(bind=test_engine)
-      Base.metadata.create_all(bind=test_engine)
-      TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
-      db = TestingSessionLocal()
-      yield db
-      db.close()
-      Base.metadata.drop_all(bind=test_engine)
-
-  @pytest.fixture(scope="module")
-  def client(test_db):
-      def override_get_db():
-          return test_db
-
-      app.dependency_overrides[get_db] = override_get_db
-      with TestClient(app) as c:
-          yield c
-      app.dependency_overrides.clear()
-  ```
+# Run with environment variables
+env $(cat api/tests/unit_tests/test.env | grep -v '^#' | xargs) pytest
+```
 
 ### Environment
 ```bash
@@ -499,29 +306,40 @@ pip install -r api/requirements.txt
 │   ├── app/
 │   │   ├── __init__.py
 │   │   ├── config.py        # App & DB configuration
-│   │   ├── main.py          # FastAPI app setup
-│   │   ├── projects.py      # API endpoints
-│   │   ├── crud.py          # Database operations
-│   │   └── models/
-│   │       ├── base.py      # Base model classes
-│   │       └── project.py   # Project models
-│   ├── templates/           # Project templates
-│   │   └── version-0/      # Initial version template
-│   │       ├── src/        # React source code
-│   │       │   ├── index.tsx
-│   │       │   ├── App.tsx
-│   │       │   └── components/
-│   │       │       └── HelloWorld.tsx
-│   │       ├── public/     # Static assets
-│   │       │   └── index.html
-│   │       ├── tsconfig.json
-│   │       └── package.json
+│   │   ├── main.py         # FastAPI app setup
+│   │   ├── models/         # SQLAlchemy models
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py
+│   │   │   ├── file.py
+│   │   │   ├── project.py
+│   │   │   ├── version.py
+│   │   │   └── tests/      # Model tests
+│   │   ├── routes/         # API endpoints
+│   │   │   ├── __init__.py
+│   │   │   ├── projects.py
+│   │   │   ├── versions.py
+│   │   │   └── tests/      # Route tests
+│   │   ├── schemas/        # Pydantic models
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py
+│   │   │   ├── common.py
+│   │   │   ├── file.py
+│   │   │   ├── project.py
+│   │   │   └── version.py
+│   │   └── services/       # Business logic
+│   │       ├── __init__.py
+│   │       ├── openrouter.py
+│   │       └── tests/      # Service tests
+│   ├── tests/              # Integration tests
+│   │   ├── __init__.py
+│   │   ├── integration_tests/
+│   │   └── common/
 │   ├── requirements.txt
 │   └── README.md
-├── supabase/
-│   ├── seed.sql             # DB schema
+├── supabase/               # Database
+│   ├── seed.sql
 │   └── config.toml
-└── cline_docs/              # Documentation
+└── cline_docs/             # Documentation
     ├── projectbrief.md
     ├── systemPatterns.md
     ├── techContext.md
@@ -530,110 +348,6 @@ pip install -r api/requirements.txt
     ├── progress.md
     └── research.md
 ```
-
-### OpenRouter Service Standards
-
-1. Prompt Management:
-   - Store prompts in separate markdown files:
-     ```
-     api/app/services/prompts/
-     ├── system_message.md      # AI role and behavior
-     └── user_message_template.md  # Request format
-     ```
-   - Load prompts with error handling
-   - Keep prompts version controlled
-   - Document prompt structure and placeholders
-
-2. Response Format:
-   - All AI responses must be wrapped in `<noodle_response>` tags
-   - JSON structure must follow:
-     ```json
-     {
-       "changes": [{
-         "operation": "create|update|delete",
-         "path": "relative/file/path",
-         "content": "string"
-       }]
-     }
-     ```
-   - File paths must be relative to project root
-   - Content must be properly escaped in JSON
-
-3. Model Configuration:
-   - Use google/gemini-2.0-flash-001 for code generation
-   - Configure system prompt for consistent response format
-   - Include project context and current files in requests
-   - Validate responses through Pydantic models
-
-4. Validation Requirements:
-   a. Response Format:
-      - Validate presence of noodle_response tags
-      - Parse and validate JSON structure
-      - Verify required fields in changes
-      - Check operation type validity
-
-   b. File Path Validation:
-      - Ensure paths are unique within changes
-      - Validate path format and structure
-      - Check for empty or invalid paths
-      - Handle special characters properly
-
-   c. Content Validation:
-      - Verify content is provided when required
-      - Handle large file content appropriately
-      - Validate content format if specified
-      - Check for content size limits
-
-5. Error Handling:
-   a. Network Errors:
-      - Handle OpenAIError with clear messages
-      - Manage APITimeoutError with retry info
-      - Handle RateLimitError with backoff guidance
-      - Log errors with appropriate context
-
-   b. Response Errors:
-      - Raise ValueError for invalid responses
-      - Use AttributeError for missing fields
-      - Handle IndexError for empty responses
-      - Provide debugging context in errors
-
-   c. Validation Errors:
-      - Clear messages for duplicate paths
-      - Descriptive errors for invalid operations
-      - Context-rich validation failures
-      - Actionable error messages
-
-6. Testing Requirements:
-   a. Coverage Standards:
-      - Maintain 95%+ service coverage
-      - Test all error conditions
-      - Verify edge cases
-      - Test with real API in development
-
-   b. Test Categories:
-      - Basic functionality (testing mode, API key)
-      - Response validation (tags, JSON)
-      - Error handling (API, timeouts, limits)
-      - Edge cases (empty, special chars)
-      - File validation (duplicates, paths)
-
-   c. Mock Patterns:
-      ```python
-      # Mock service for testing
-      @pytest.fixture
-      def mock_openrouter():
-          with patch('app.services.openrouter.OpenRouterService._get_client') as mock:
-              mock_client = MagicMock()
-              mock.return_value = mock_client
-              yield mock_client
-      ```
-
-7. Environment Configuration:
-   ```python
-   # Required environment variables
-   OPENROUTER_API_KEY=[key]  # API authentication
-   TESTING=true|false        # Test mode control
-   ```
 
 ## Environment Variables
 Required in api/.env:

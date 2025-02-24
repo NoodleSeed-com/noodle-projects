@@ -1,91 +1,23 @@
-"""
-Projects API endpoints.
-"""
+"""Version-specific route handlers."""
 from typing import List
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query, Path
-from sqlalchemy.orm import Session
 import sqlalchemy.exc
+from fastapi import APIRouter, Depends, HTTPException, Query, Path
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from .config import settings, get_db
-from .crud import projects as crud
-from typing import Annotated
-from .models.project import (
-    ProjectCreate,
-    ProjectUpdate,
-    ProjectResponse,
-    ProjectVersionResponse,
-    ProjectVersionListItem,
+from ..config import get_db
+from ..crud import projects, versions
+from ..schemas.version import (
+    VersionResponse,
+    VersionListItem,
     CreateVersionRequest
 )
+from ..services.openrouter import get_openrouter
 
 router = APIRouter()
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
-@router.get("/", response_model=List[ProjectResponse])
-async def list_projects(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
-    db: AsyncSession = Depends(get_db)
-):
-    """List all active projects."""
-    return await crud.get_multi(db, skip=skip, limit=limit)
-
-@router.post("/", response_model=ProjectResponse, status_code=201)
-async def create_project(
-    project: ProjectCreate,
-    db: AsyncSession = Depends(get_db)
-):
-    """Create a new project."""
-    return await crud.create(db, project)
-
-@router.get("/{project_id}", response_model=ProjectResponse)
-async def get_project(
-    project_id: UUID,
-    db: AsyncSession = Depends(get_db)
-):
-    """Get a specific project by ID."""
-    project = await crud.get(db, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return project
-
-@router.put("/{project_id}", response_model=ProjectResponse)
-async def update_project(
-    project_id: UUID,
-    project: ProjectUpdate,
-    db: AsyncSession = Depends(get_db)
-):
-    """Update a project."""
-    # Get existing project
-    existing = await crud.get(db, project_id)
-    if not existing:
-        raise HTTPException(status_code=404, detail="Project not found")
-    
-    # Allow updates if project is active or if we're reactivating
-    if not existing.active and (project.active is None or not project.active):
-        raise HTTPException(
-            status_code=403,
-            detail="Cannot modify inactive project. Reactivate the project first."
-        )
-    
-    db_project = await crud.update(db, project_id, project)
-    return db_project
-
-@router.delete("/{project_id}", response_model=ProjectResponse)
-async def delete_project(
-    project_id: UUID,
-    db: AsyncSession = Depends(get_db)
-):
-    """Soft delete a project."""
-    project = await crud.delete(db, project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return project
-
-@router.get("/{project_id}/versions", response_model=List[ProjectVersionListItem])
-async def list_project_versions(
+@router.get("/", response_model=List[VersionListItem])
+async def list_versions(
     project_id: UUID,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -100,16 +32,16 @@ async def list_project_versions(
     
     Versions are ordered by version_number.
     """
-    project = await crud.get(db, project_id)
+    project = await projects.get(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    return await crud.get_versions(db, project_id, skip=skip, limit=limit)
+    return await versions.get_versions(db, project_id, skip=skip, limit=limit)
 
 @router.get(
-    "/{project_id}/versions/{version_number}",
-    response_model=ProjectVersionResponse
+    "/{version_number}",
+    response_model=VersionResponse
 )
-async def get_project_version(
+async def get_version(
     project_id: UUID,
     version_number: int = Path(..., ge=0),
     db: AsyncSession = Depends(get_db)
@@ -121,19 +53,17 @@ async def get_project_version(
     - parent_version: The version number of the parent version (if any)
     - parent_version_id: The UUID of the parent version (maintained for compatibility)
     """
-    project = await crud.get(db, project_id)
+    project = await projects.get(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     
-    version = await crud.get_version(db, project_id, version_number)
+    version = await versions.get_version(db, project_id, version_number)
     if not version:
         raise HTTPException(status_code=404, detail="Version not found")
     return version
 
-from app.services.openrouter import get_openrouter
-
-@router.post("/{project_id}/versions", response_model=ProjectVersionResponse)
-async def create_project_version(
+@router.post("/", response_model=VersionResponse)
+async def create_version(
     project_id: UUID,
     request: CreateVersionRequest,
     db: AsyncSession = Depends(get_db),
@@ -148,7 +78,7 @@ async def create_project_version(
     4. Create new version with changes
     """
     # Check if project exists and is active
-    project = await crud.get(db, project_id)
+    project = await projects.get(db, project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
     if not project.active:
@@ -158,7 +88,7 @@ async def create_project_version(
         )
     
     # Check if parent version exists
-    parent_version = await crud.get_version(db, project_id, request.parent_version_number)
+    parent_version = await versions.get_version(db, project_id, request.parent_version_number)
     if not parent_version:
         raise HTTPException(status_code=404, detail="Parent version not found")
     
@@ -171,7 +101,7 @@ async def create_project_version(
         )
         
         # Create new version with changes
-        new_version = await crud.create_version(
+        new_version = await versions.create_version(
             db=db,
             project_id=project_id,
             parent_version_number=request.parent_version_number,

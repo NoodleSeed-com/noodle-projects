@@ -368,7 +368,7 @@ Investigation of test failures in edge case tests revealed critical mocking patt
 
 1. Problem Analysis
    - Error: `AttributeError: 'Project' object has no attribute 'files'`
-   - Root cause: Mock returning Project instead of ProjectVersion for version queries
+   - Root cause: Mock returning Project instead of Version for version queries
    - Complex query patterns with joinedload relationships causing type mismatches
    - String-based query inspection proving unreliable
 
@@ -380,10 +380,10 @@ Investigation of test failures in edge case tests revealed critical mocking patt
    select(Project.active)
    update(Project)
 
-   # ProjectVersion queries:
-   select(ProjectVersion).options(joinedload(ProjectVersion.files))
-   select(ProjectVersion.version_number)
-   select(ProjectVersion.id, ProjectVersion.version_number, ProjectVersion.name)
+   # Version queries:
+   select(Version).options(joinedload(Version.files))
+   select(Version.version_number)
+   select(Version.id, Version.version_number, Version.name)
    ```
 
 3. Attempted Solutions
@@ -391,21 +391,21 @@ Investigation of test failures in edge case tests revealed critical mocking patt
       ```python
       # Issue: Too simplistic, doesn't handle complex queries
       mock.execute = AsyncMock(
-          return_value=version_result if param == "project_versions" else project_result
+          return_value=version_result if param == "versions" else project_result
       )
       ```
 
    b. Query string inspection:
       ```python
       # Issue: Brittle, depends on string representation
-      if "ProjectVersion" in str(query):
+      if "Version" in str(query):
           return version_result
       ```
 
    c. Query structure inspection:
       ```python
       # Issue: Complex to maintain, tight coupling to SQLAlchemy internals
-      if isinstance(query, Select) and query.froms[0].name == 'project_versions':
+      if isinstance(query, Select) and query.froms[0].name == 'versions':
           return version_result
       ```
 
@@ -427,7 +427,7 @@ Investigation of test failures in edge case tests revealed critical mocking patt
 
 1. Problem Analysis
    - Error: `AttributeError: 'Project' object has no attribute 'parent_version_id'`
-   - Error: `AttributeError: 'ProjectVersion' object has no attribute 'active'`
+   - Error: `AttributeError: 'Version' object has no attribute 'active'`
    - Root cause: Mock returning wrong model types for different queries
    - Parameterized fixture causing type confusion
 
@@ -435,7 +435,7 @@ Investigation of test failures in edge case tests revealed critical mocking patt
    ```python
    # Different return types needed:
    crud.get(db, project_id) -> Project  # Should return Project instance
-   crud.get_version(db, project_id, version) -> ProjectVersionResponse  # Should return ProjectVersionResponse
+   crud.get_version(db, project_id, version) -> VersionResponse  # Should return VersionResponse
    ```
 
 3. Mock Implementation Challenges
@@ -463,7 +463,7 @@ Investigation of test failures in edge case tests revealed critical mocking patt
    async def mock_execute(query):
        if "Project.active" in str(query):
            return MagicMock(scalar_one=lambda: True)
-       if "ProjectVersion" in str(query):
+       if "Version" in str(query):
            return MagicMock(
                unique=lambda: self,
                scalar_one_or_none=lambda: mock_version
