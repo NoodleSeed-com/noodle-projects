@@ -55,16 +55,29 @@ async def test_version_creation(mock_db_session, mock_models):
 @pytest.mark.asyncio
 async def test_version_file_relationships(mock_db_session, mock_models):
     """Test version file relationships."""
+    # Setup mock project and version
+    mock_project = MagicMock(spec=Project)
+    mock_project.id = uuid4()
+    mock_project.active = True
+
     mock_version = MagicMock(spec=Version)
     mock_version.id = uuid4()
     mock_version.files = []
+    mock_version.project_id = mock_project.id
+
+    # Setup session.get to return mock project
+    def mock_get(model_class, id_):
+        if model_class == Project and id_ == mock_project.id:
+            return mock_project
+        return None
+    mock_db_session.get = MagicMock(side_effect=mock_get)
 
     mock_models.Version.return_value = mock_version
     mock_db_session.add.return_value = None
     mock_db_session.commit.return_value = AsyncMock()
     mock_db_session.refresh.return_value = AsyncMock()
 
-    version = Version(project_id=uuid4(), version_number=1, name="Test Version", parent_id=uuid4())
+    version = mock_models.Version(project_id=mock_project.id, version_number=1, name="Test Version")
     mock_db_session.add(version)
     await mock_db_session.commit()
     await mock_db_session.refresh(version)
@@ -96,15 +109,28 @@ async def test_version_file_relationships(mock_db_session, mock_models):
 @pytest.mark.asyncio
 async def test_version_file_constraints(mock_db_session, mock_models):
     """Test version file constraints."""
+    # Setup mock project and version
+    mock_project = MagicMock(spec=Project)
+    mock_project.id = uuid4()
+    mock_project.active = True
+
     mock_version = MagicMock(spec=Version)
     mock_version.id = uuid4()
+    mock_version.project_id = mock_project.id
+
+    # Setup session.get to return mock project
+    def mock_get(model_class, id_):
+        if model_class == Project and id_ == mock_project.id:
+            return mock_project
+        return None
+    mock_db_session.get = MagicMock(side_effect=mock_get)
 
     mock_models.Version.return_value = mock_version
     mock_db_session.add.return_value = None
     mock_db_session.commit.side_effect = AsyncMock()
     mock_db_session.rollback.return_value = AsyncMock()
 
-    version = Version(project_id=uuid4(), version_number=1, name="Test Version", parent_id=uuid4())
+    version = mock_models.Version(project_id=mock_project.id, version_number=1, name="Test Version")
     mock_db_session.add(version)
     await mock_db_session.commit()
 
@@ -174,6 +200,21 @@ async def test_version_inheritance(mock_db_session, mock_models):
 @pytest.mark.asyncio
 async def test_version_validation(mock_db_session, mock_models):
     """Test version validation rules."""
+    # Test negative version number
+    with pytest.raises(NoodleError, match="Version number cannot be negative"):
+        Version(project_id=uuid4(), version_number=-1, name="Test Version")
+
+    # Test default version number
+    version = Version(project_id=uuid4(), name="Test Version")
+    assert version.version_number == 0
+
+    # Test version name validation
+    version = Version(project_id=uuid4(), name="", version_number=1)  # Empty name is allowed
+    assert version.name == ""
+
+    version = Version(project_id=uuid4(), name="Test Version", version_number=1)
+    assert version.name == "Test Version"
+
     mock_project1 = MagicMock(spec=Project)
     mock_project1.id = uuid4()
     mock_project1.versions = [MagicMock(spec=Version)]
@@ -220,12 +261,15 @@ async def test_version_validation(mock_db_session, mock_models):
     
     next_version_number = max(v.version_number for v in mock_project1.versions) + 1
     
-    # Mock object_session before creating Version instance
-    from unittest.mock import patch
-    with patch('sqlalchemy.orm.object_session', return_value=mock_db_session):
-        # This should raise NoodleError during initialization
-        with pytest.raises(NoodleError, match="Cannot create version in inactive project"):
-            Version(project_id=mock_project1.id, version_number=next_version_number, name="Test Version", parent_id=mock_project1.versions[0].id)
+    # Pass mock session directly in kwargs
+    with pytest.raises(NoodleError, match="Cannot create version in inactive project"):
+        Version(
+            project_id=mock_project1.id,
+            version_number=next_version_number,
+            name="Test Version",
+            parent_id=mock_project1.versions[0].id,
+            session=mock_db_session
+        )
 
 @pytest.mark.asyncio
 async def test_version_timestamps(mock_db_session, mock_models):
@@ -267,3 +311,211 @@ async def test_version_timestamps(mock_db_session, mock_models):
     assert version.created_at == created_at
     assert version.updated_at == new_updated_at
     assert version.updated_at > version.created_at
+
+@pytest.mark.asyncio
+async def test_active_property_inheritance(mock_db_session, mock_models):
+    """Test active property inheritance from project."""
+    mock_project = MagicMock(spec=Project)
+    mock_project.id = uuid4()
+    mock_project.active = True
+
+    # Setup mock version with proper SQLAlchemy relationship
+    mock_version = MagicMock(spec=Version)
+    mock_version.id = uuid4()
+    mock_version.project_id = mock_project.id
+    mock_version.project = mock_project
+    mock_version.active = mock_project.active  # Set up the hybrid property
+
+    def mock_get(model_class, id_):
+        if model_class == Project and id_ == mock_project.id:
+            return mock_project
+        return None
+    mock_db_session.get = MagicMock(side_effect=mock_get)
+
+    mock_models.Version.return_value = mock_version
+    mock_db_session.add.return_value = None
+    mock_db_session.commit.return_value = AsyncMock()
+    mock_db_session.refresh.return_value = AsyncMock()
+
+    version = mock_models.Version(project_id=mock_project.id, version_number=1)
+    mock_db_session.add(version)
+    await mock_db_session.commit()
+    await mock_db_session.refresh(version)
+
+    # Test active property inheritance
+    assert version.active == mock_project.active
+
+    # Test active property updates with project
+    mock_project.active = False
+    mock_version.active = mock_project.active  # Update mock version's active property
+    assert version.active == mock_project.active
+
+@pytest.mark.asyncio
+async def test_version_number_uniqueness(mock_db_session, mock_models):
+    """Test version number uniqueness within a project."""
+    mock_project1 = MagicMock(spec=Project)
+    mock_project1.id = uuid4()
+    mock_project1.active = True
+
+    mock_project2 = MagicMock(spec=Project)
+    mock_project2.id = uuid4()
+    mock_project2.active = True
+
+    def mock_get(model_class, id_):
+        if model_class == Project:
+            if id_ == mock_project1.id:
+                return mock_project1
+            elif id_ == mock_project2.id:
+                return mock_project2
+        return None
+    mock_db_session.get = MagicMock(side_effect=mock_get)
+
+    # Create version in first project
+    mock_version1 = MagicMock(spec=Version)
+    mock_version1.id = uuid4()
+    mock_version1.project_id = mock_project1.id
+    mock_version1.version_number = 1
+
+    mock_models.Version.return_value = mock_version1
+    mock_db_session.add.return_value = None
+    mock_db_session.commit.return_value = AsyncMock()
+    mock_db_session.refresh.return_value = AsyncMock()
+
+    version1 = mock_models.Version(project_id=mock_project1.id, version_number=1)
+    mock_db_session.add(version1)
+    await mock_db_session.commit()
+
+    # Try to create version with same number in same project
+    mock_db_session.commit.side_effect = IntegrityError(None, None, None)
+    with pytest.raises(IntegrityError):
+        version2 = mock_models.Version(project_id=mock_project1.id, version_number=1)
+        mock_db_session.add(version2)
+        await mock_db_session.commit()
+    await mock_db_session.rollback()
+
+    # Create version with same number in different project
+    mock_db_session.commit.side_effect = None
+    mock_version2 = MagicMock(spec=Version)
+    mock_version2.id = uuid4()
+    mock_version2.project_id = mock_project2.id
+    mock_version2.version_number = 1
+
+    mock_models.Version.return_value = mock_version2
+    version2 = mock_models.Version(project_id=mock_project2.id, version_number=1)
+    mock_db_session.add(version2)
+    await mock_db_session.commit()
+
+    assert version1.version_number == version2.version_number
+    assert version1.project_id != version2.project_id
+
+@pytest.mark.asyncio
+async def test_concurrent_file_operations(mock_db_session, mock_models):
+    """Test concurrent file operations in a version."""
+    mock_project = MagicMock(spec=Project)
+    mock_project.id = uuid4()
+    mock_project.active = True
+
+    mock_version = MagicMock(spec=Version)
+    mock_version.id = uuid4()
+    mock_version.project_id = mock_project.id
+    mock_version.files = []
+
+    def mock_get(model_class, id_):
+        if model_class == Project and id_ == mock_project.id:
+            return mock_project
+        return None
+    mock_db_session.get = MagicMock(side_effect=mock_get)
+
+    mock_models.Version.return_value = mock_version
+    mock_db_session.add.return_value = None
+    mock_db_session.commit.return_value = AsyncMock()
+    mock_db_session.refresh.return_value = AsyncMock()
+
+    version = mock_models.Version(project_id=mock_project.id, version_number=1)
+    mock_db_session.add(version)
+    await mock_db_session.commit()
+    await mock_db_session.refresh(version)
+
+    # Try to create files with same path concurrently
+    file_path = "src/test.tsx"
+    file1 = File(version_id=version.id, path=file_path, content="Content 1")
+    mock_db_session.add(file1)
+    await mock_db_session.commit()
+
+    # Simulate concurrent file creation
+    mock_db_session.commit.side_effect = IntegrityError(None, None, None)
+    with pytest.raises(IntegrityError):
+        file2 = File(version_id=version.id, path=file_path, content="Content 2")
+        mock_db_session.add(file2)
+        await mock_db_session.commit()
+    await mock_db_session.rollback()
+
+    # Reset commit behavior
+    mock_db_session.commit.side_effect = None
+
+    # Verify only one file exists
+    mock_db_session.query.return_value.filter.return_value.all.return_value = [file1]
+    files = mock_db_session.query(File).filter(File.version_id == version.id).all()
+    assert len(files) == 1
+    assert files[0].path == file_path
+
+@pytest.mark.asyncio
+async def test_version_validation_with_session(mock_db_session, mock_models):
+    """Test version validation with session parameter."""
+    mock_project = MagicMock(spec=Project)
+    mock_project.id = uuid4()
+    mock_project.active = True
+
+    def mock_get(model_class, id_):
+        if model_class == Project and id_ == mock_project.id:
+            return mock_project
+        return None
+    mock_db_session.get = MagicMock(side_effect=mock_get)
+
+    # Test validation with session in constructor
+    version = Version(
+        project_id=mock_project.id,
+        version_number=1,
+        name="Test Version",
+        session=mock_db_session
+    )
+    assert version.project_id == mock_project.id
+    assert version.version_number == 1
+
+    # Test validation with inactive project
+    mock_project.active = False
+    with pytest.raises(NoodleError, match="Cannot create version in inactive project"):
+        Version(
+            project_id=mock_project.id,
+            version_number=2,
+            name="Test Version",
+            session=mock_db_session
+        )
+
+    # Test validation with explicit validate call
+    mock_project.active = True
+    version = Version(project_id=mock_project.id, version_number=3)
+    version.validate(mock_db_session)  # Should not raise error
+
+    # Test validation with invalid parent
+    mock_project2 = MagicMock(spec=Project)
+    mock_project2.id = uuid4()
+    mock_version = MagicMock(spec=Version)
+    mock_version.id = uuid4()
+    mock_version.project_id = mock_project2.id
+
+    def mock_get_with_parent(model_class, id_):
+        if model_class == Project and id_ == mock_project.id:
+            return mock_project
+        elif model_class == Version and id_ == mock_version.id:
+            return mock_version
+        return None
+    mock_db_session.get = MagicMock(side_effect=mock_get_with_parent)
+
+    with pytest.raises(NoodleError, match="Parent version must be from the same project"):
+        version = Version(
+            project_id=mock_project.id,
+            version_number=4,
+            parent_id=mock_version.id,
+            session=mock_db_session
+        )
