@@ -1,7 +1,7 @@
 # Active Context
 
-## Current State (Updated 2024-02-24 08:10 PST)
-Successfully fixed test_project_soft_delete and documented SQLAlchemy testing patterns.
+## Current State (Updated 2024-02-24 13:05 PST)
+Completed routes test coverage analysis and identified implementation issues preventing tests from running successfully.
 
 ### Recent Test Fixes
 1. test_latest_version_number:
@@ -114,7 +114,68 @@ Current coverage report shows:
 - Maintained existing functionality
 - Preserved database schema
 
-## Current Test Status (Updated 2024-02-24 09:36 PST)
+## Routes Test Coverage Analysis (Updated 2024-02-24 13:05 PST)
+
+### Coverage Summary
+- app/routes/__init__.py: 100% coverage (6/6 statements)
+- app/routes/projects.py: 40% coverage (19/37 statements missed, 8 branches)
+- app/routes/versions.py: 25% coverage (33/49 statements missed, 14 branches)
+
+### Test Execution Issues
+1. Missing `mock_db` Fixture:
+   - Routes tests conftest.py was missing the `mock_db` fixture
+   - Added fixture to match unit tests implementation
+   - Fixed File model initialization to include version_id
+
+2. Implementation Mismatch:
+   - Error: `AttributeError: 'VersionCRUD' object has no attribute 'create_initial_version'`
+   - Method called in projects.py but not implemented in VersionCRUD class
+   - Needs implementation or route update
+
+3. JSON Syntax Errors:
+   - Missing commas between properties in JSON objects in test files
+   - Example: 
+     ```python
+     # Incorrect
+     client.post("/api/projects/", json={
+         "name": "Test Project"
+         "description": "Test Description"
+     })
+     
+     # Correct
+     client.post("/api/projects/", json={
+         "name": "Test Project",
+         "description": "Test Description"
+     })
+     ```
+
+### Coverage Gaps
+1. Error Paths:
+   - In projects.py: Lines 29-34, 42-45, 55-67, 75-78
+   - In versions.py: Lines 35-38, 56-63, 81-128
+
+2. Exception Handling:
+   - Extensive exception handling in create_version mostly untested
+   - Includes ValueError, IntegrityError, OperationalError, and general exceptions
+
+3. Validation Logic:
+   - Input validation logic partially tested
+   - Need more tests for edge cases
+
+### Test Infrastructure
+1. Mock Database:
+   - Comprehensive mock database setup that simulates SQLAlchemy's async session
+   - Properly configured for routes tests
+
+2. Mock OpenRouter Service:
+   - Mock for the AI service that generates file changes
+   - Properly configured in routes tests
+
+3. Test Helpers:
+   - Utility functions for testing concurrent operations and constraints
+   - Well-designed but not fully utilized
+
+## Current Test Status (Updated 2024-02-24 13:05 PST)
 
 ### Test Progress
 1. Fixed Tests:

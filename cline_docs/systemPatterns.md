@@ -279,6 +279,103 @@ Benefits:
    - Setup requirements
    - Expected results
 
+### Routes Testing Patterns (Added 2024-02-24)
+
+1. Test Client Setup:
+   ```python
+   @pytest.fixture
+   def client(mock_db: Session):
+       """Test client with mocked database."""
+       def override_get_db():
+           return mock_db
+
+       app.dependency_overrides[get_db] = override_get_db
+       with TestClient(app) as client:
+           yield client
+       app.dependency_overrides.clear()
+   ```
+
+2. Service Mocking:
+   ```python
+   @pytest.fixture
+   def mock_openrouter():
+       """Mock OpenRouter service for testing."""
+       async def mock_service():
+           mock = MagicMock()
+           mock.get_file_changes.return_value = []
+           return mock
+       
+       app.dependency_overrides[get_openrouter] = mock_service
+       yield mock_service
+       app.dependency_overrides.clear()
+   ```
+
+3. Test Categories:
+   - Success Cases: Test normal operation paths
+   - Error Cases: Test validation and error handling
+   - Edge Cases: Test boundary conditions
+   - Concurrent Cases: Test race conditions and concurrency
+
+4. JSON Request Patterns:
+   ```python
+   # Always include commas between properties
+   client.post("/api/projects/", json={
+       "name": "Test Project",
+       "description": "Test Description"
+   })
+   ```
+
+5. Response Validation Patterns:
+   ```python
+   # Status code validation
+   assert response.status_code == 201
+   
+   # Response structure validation
+   data = response.json()
+   assert "id" in data
+   assert data["name"] == "Test Project"
+   
+   # Error response validation
+   assert response.status_code == 400
+   error = response.json()
+   assert "detail" in error
+   assert isinstance(error["detail"], str)
+   ```
+
+6. Concurrent Testing Patterns:
+   ```python
+   def create_version(i: int):
+       return client.post(
+           f"/api/projects/{project_id}/versions",
+           json={
+               "name": f"Version {i}",
+               "parent_version_number": 0,
+               "project_context": "Test context",
+               "change_request": "Test request"
+           }
+       )
+   
+   responses = run_concurrent_requests(client, create_version, count=3, max_workers=3)
+   
+   # Verify unique version numbers
+   assert_unique_responses(responses, "version_number")
+   ```
+
+7. Common Test Patterns:
+   - Test inactive project operations
+   - Test version validation
+   - Test file path constraints
+   - Test concurrent operations
+   - Test transaction rollback
+   - Test error responses
+
+8. Coverage Priorities:
+   - Error paths in both routes files
+   - Exception handling in create_version
+   - Validation logic
+   - Concurrent operations
+   - Transaction management
+
 ### SQLAlchemy Testing Patterns
 
 1. Session Management:
