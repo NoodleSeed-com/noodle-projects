@@ -288,3 +288,51 @@ Research findings from edge case testing:
    - Maintain clear error mapping
    - Document error scenarios
    - Test both success and failure paths
+
+### Test Organization Patterns
+Research findings from test refactoring:
+
+1. Test Directory Structure
+   - Unit tests in api/tests/unit_tests/
+     * Tests using mocks (especially mock_openrouter)
+     * Tests with controlled dependencies
+     * Tests verifying specific behaviors
+   - Integration tests in api/tests/integration_tests/
+     * Tests using real dependencies
+     * End-to-end behavior verification
+     * Component interaction tests
+
+2. Concurrent Testing Best Practices
+   - Start with low concurrency (3 concurrent requests)
+   - Increase concurrency after stability verified
+   - Use max_workers parameter to control thread pool
+   - Add transaction completion checks:
+     ```python
+     # Wait for transactions to complete
+     for response in responses:
+         if response.status_code == 200:
+             client.get(f"/api/projects/{project_id}")
+     ```
+
+3. Database Fixture Usage
+   - mock_db for unit tests
+     * Controlled environment
+     * Predictable behavior
+     * Fast execution
+   - test_db for integration tests
+     * Real database operations
+     * Transaction management
+     * State verification
+
+4. Common Issues Found
+   - Response validation errors (missing required fields)
+   - Transaction state conflicts
+   - JSON syntax errors in test data
+   - Concurrent operation race conditions
+
+5. Key Learnings
+   - Keep mock-dependent tests in unit_tests/
+   - Use clear test categorization
+   - Start with low concurrency
+   - Verify transaction completion
+   - Include proper state checks

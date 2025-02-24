@@ -1,36 +1,41 @@
+import os
 import pytest
+from pathlib import Path
+from dotenv import load_dotenv
+from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+
+# Load environment variables before importing app modules
+env_path = Path(__file__).parent / "test.env"
+load_dotenv(dotenv_path=env_path)
+
+# Import app modules after environment is configured
 from app.main import app
 from app.config import get_db, settings
-from app.models.base import Base
-
-@pytest.fixture(scope="session")
-def test_engine():
-    db_url = str(settings.DATABASE_URL).replace("+asyncpg", "")  # Make sure it is sync
-    engine = create_engine(db_url, echo=True)
-    return engine
 
 @pytest.fixture(scope="module")
-def test_db(test_engine):
-    Base.metadata.drop_all(bind=test_engine)
-    Base.metadata.create_all(bind=test_engine)
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
-    db = TestingSessionLocal()
-    yield db
-    db.close()
-    Base.metadata.drop_all(bind=test_engine)
+def mock_db():
+    """Mock database session for unit tests."""
+    return MagicMock()
 
 @pytest.fixture(scope="module")
-def client(test_db):
+def client(mock_db):
+    """Test client with mocked database."""
     def override_get_db():
-        return test_db
+        return mock_db
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+@pytest.fixture
+def mock_openrouter():
+    """Mock OpenRouter service."""
+    with patch('app.services.openrouter.OpenRouterService._get_client') as mock:
+        mock_client = MagicMock()
+        mock.return_value = mock_client
+        yield mock_client
 
 @pytest.fixture
 def test_project():

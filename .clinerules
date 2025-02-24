@@ -238,18 +238,62 @@
 #### Test Structure
 ```
 api/tests/
-├── __init__.py          # Make tests a package
-├── conftest.py          # Global test configuration
-├── test.env            # Test environment variables
-├── test_main.py        # Main app tests (health, CORS)
-└── test_projects/      # Project-related tests
-    ├── conftest.py     # Shared project test fixtures
-    ├── test_crud.py    # CRUD operation tests
-    ├── test_validation.py  # Input validation tests
-    ├── test_versions.py   # Version management tests
-    ├── test_files.py     # File handling tests
-    └── test_edge_cases.py # Edge cases and constraints
+├── __init__.py                # Make tests a package
+├── conftest.py                # Global test configuration
+├── test.env                   # Test environment variables
+├── unit_tests/                # Tests using mocks
+│   ├── conftest.py           # Unit test fixtures
+│   ├── test_edge_cases.py    # Error scenarios
+│   ├── test_concurrent_operations.py  # Concurrent tests
+│   └── test_inactive_project.py      # State management
+└── integration_tests/         # Tests with real dependencies
+    ├── conftest.py           # Integration test fixtures
+    ├── test_concurrent.py    # Concurrent operations
+    ├── test_integration.py   # End-to-end flows
+    └── test_validation.py    # Input validation
 ```
+
+#### Test Organization Rules
+1. Unit Tests (unit_tests/):
+   - Use mock_db fixture
+   - Mock external services
+   - Test specific behaviors
+   - Focus on edge cases
+   - Verify error handling
+
+2. Integration Tests (integration_tests/):
+   - Use test_db fixture
+   - Real database operations
+   - End-to-end flows
+   - Component interactions
+   - State management
+
+3. Concurrent Testing:
+   - Start with low concurrency (3 requests)
+   - Use max_workers to control thread pool
+   - Add transaction completion checks:
+     ```python
+     # Wait for transactions to complete
+     for response in responses:
+         if response.status_code == 200:
+             client.get(f"/api/projects/{project_id}")
+     ```
+   - Handle SQLAlchemy state changes
+   - Verify final state
+
+4. Response Validation:
+   - Include all required fields:
+     ```python
+     {
+       "id": "uuid",
+       "active": true,
+       "created_at": "datetime",
+       "updated_at": "datetime"
+     }
+     ```
+   - Use proper types
+   - Handle validation errors
+   - Test error responses
 
 #### Test Configuration
 - Use separate test database in Supabase

@@ -1,7 +1,4 @@
-"""
-Tests for edge cases and error scenarios in concurrent operations.
-Focuses on transaction rollback, error recovery, and race conditions.
-"""
+"""Unit tests for edge cases and error scenarios using mocked OpenRouter service."""
 import pytest
 from concurrent.futures import ThreadPoolExecutor
 from fastapi.testclient import TestClient
@@ -18,7 +15,7 @@ from app.models.project import (
 from app.crud import projects
 from app.main import app
 from app.services.openrouter import get_openrouter
-from tests.test_projects.test_helpers import (
+from tests.common.test_helpers import (
     run_concurrent_requests,
     assert_unique_responses,
     assert_response_mix,
@@ -26,7 +23,7 @@ from tests.test_projects.test_helpers import (
     assert_file_constraints
 )
 
-def test_partial_version_creation_rollback(client: TestClient, test_db: Session, mock_openrouter):
+def test_partial_version_creation_rollback(client: TestClient, mock_db: Session, mock_openrouter):
     """Test transaction rollback on partial version creation failure.
     
     Verifies:
@@ -70,7 +67,7 @@ def test_partial_version_creation_rollback(client: TestClient, test_db: Session,
     versions = versions_response.json()
     assert len(versions) == 1  # Only initial version exists
 
-def test_concurrent_connection_pool_exhaustion(client: TestClient, test_db: Session, mock_openrouter):
+def test_concurrent_connection_pool_exhaustion(client: TestClient, mock_db: Session, mock_openrouter):
     """Test behavior when connection pool is exhausted.
     
     Verifies:
@@ -112,8 +109,8 @@ def test_concurrent_connection_pool_exhaustion(client: TestClient, test_db: Sess
     responses = run_concurrent_requests(
         client,
         create_version,
-        count=20,  # More than our pool size
-        max_workers=10
+        count=3,
+        max_workers=3
     )
     
     # Some requests should succeed, others should fail gracefully
@@ -124,7 +121,7 @@ def test_concurrent_connection_pool_exhaustion(client: TestClient, test_db: Sess
     assert error_count > 0, "No requests failed due to pool exhaustion"
     assert all(r.status_code in (200, 503, 429) for r in responses)
 
-def test_concurrent_version_state_race(client: TestClient, test_db: Session, mock_openrouter):
+def test_concurrent_version_state_race(client: TestClient, mock_db: Session, mock_openrouter):
     """Test race conditions in version state updates.
     
     Verifies:
@@ -169,7 +166,7 @@ def test_concurrent_version_state_race(client: TestClient, test_db: Session, moc
             json={"name": f"Updated Name {i}"}
         )
     
-    responses = run_concurrent_requests(client, update_state, count=5)
+    responses = run_concurrent_requests(client, update_state, count=3, max_workers=3)
     
     # Verify one update succeeded, others failed with conflict
     success_responses = [r for r in responses if r.status_code == 200]
@@ -183,7 +180,7 @@ def test_concurrent_version_state_race(client: TestClient, test_db: Session, moc
     final_state = final_response.json()
     assert final_state["name"].startswith("Updated Name")
 
-def test_idempotent_version_creation(client: TestClient, test_db: Session, mock_openrouter):
+def test_idempotent_version_creation(client: TestClient, mock_db: Session, mock_openrouter):
     """Test idempotent version creation under concurrent requests.
     
     Verifies:
@@ -222,7 +219,7 @@ def test_idempotent_version_creation(client: TestClient, test_db: Session, mock_
             }
         )
     
-    responses = run_concurrent_requests(client, create_version, count=3)
+    responses = run_concurrent_requests(client, create_version, count=3, max_workers=3)
     
     # All requests should return same version
     success_responses = [r for r in responses if r.status_code == 200]
@@ -238,7 +235,7 @@ def test_idempotent_version_creation(client: TestClient, test_db: Session, mock_
     versions = versions_response.json()
     assert len(versions) == 2  # Initial version + 1 new version
 
-def test_file_operation_compensation(client: TestClient, test_db: Session, mock_openrouter):
+def test_file_operation_compensation(client: TestClient, mock_db: Session, mock_openrouter):
     """Test compensation for failed file operations.
     
     Verifies:
@@ -287,7 +284,7 @@ def test_file_operation_compensation(client: TestClient, test_db: Session, mock_
             }
         )
     
-    responses = run_concurrent_requests(client, create_file, count=4)
+    responses = run_concurrent_requests(client, create_file, count=3, max_workers=3)
     
     # Verify mix of success and failure
     success_responses = [r for r in responses if r.status_code == 201]

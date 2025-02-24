@@ -2,7 +2,7 @@
 Tests for main application module.
 """
 from app.main import settings
-from .test_projects.test_versions import get_template_files
+from .test_versions import get_template_files
 
 def test_create_project_with_version_0(client):
     """

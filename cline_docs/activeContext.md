@@ -29,6 +29,35 @@ The project is in a stable state with all tests passing. Recent changes have foc
 - Enhancing test coverage for edge cases
 - Implementing service mocking standards
 - Maintaining transaction integrity
+- Fixing test organization issues
+- Resolving concurrent test failures
+
+## Test Organization
+1. Directory Structure:
+   ```
+   api/tests/
+   ├── unit_tests/          # Mock-dependent tests
+   │   ├── conftest.py      # Unit test fixtures
+   │   ├── test_edge_cases.py
+   │   ├── test_concurrent_operations.py
+   │   └── test_inactive_project.py
+   └── integration_tests/   # Real dependency tests
+       ├── conftest.py      # Integration test fixtures
+       ├── test_concurrent.py
+       └── test_integration.py
+   ```
+
+2. Current Issues:
+   - Response validation errors in unit tests
+   - Transaction state conflicts in concurrent tests
+   - JSON syntax errors in test data
+   - Need to properly mock response data
+
+3. Next Actions:
+   - Fix response validation by including all required fields
+   - Add transaction completion checks
+   - Fix JSON syntax in test requests
+   - Update mock_db fixture to handle validation
 
 ## Recent Changes
 1. Error Handling:

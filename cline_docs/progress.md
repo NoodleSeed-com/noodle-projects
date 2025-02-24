@@ -39,9 +39,22 @@
 - Fixed error status code mapping (ValueError -> 400)
 - Added dependency override patterns for service mocking
 - Improved test coverage for edge cases
+- Reorganized tests into unit_tests/ and integration_tests/
+- Reduced concurrency in tests to improve stability
+- Added transaction completion checks in concurrent tests
 
 ## Known Issues
-None currently.
+1. Response validation errors in unit tests
+   - Missing required fields (id, active, timestamps)
+   - Need to properly mock response data
+
+2. Transaction state conflicts in concurrent tests
+   - SQLAlchemy state change errors
+   - Need better transaction management
+
+3. JSON syntax errors in test data
+   - Missing commas in test request bodies
+   - Need to fix formatting
 
 ## Next Steps
 1. Update to Pydantic v2 validation methods
