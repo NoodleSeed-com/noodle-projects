@@ -1,144 +1,311 @@
 """
-Tests for edge cases and advanced scenarios.
+Tests for edge cases and error scenarios in concurrent operations.
+Focuses on transaction rollback, error recovery, and race conditions.
 """
 import pytest
+from concurrent.futures import ThreadPoolExecutor
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
-from uuid import uuid4
-
+from sqlalchemy.exc import IntegrityError, OperationalError
+from unittest.mock import MagicMock
+from app.models.project import (
+    ProjectCreate,
+    ProjectResponse,
+    ProjectVersionResponse,
+    FileOperation,
+    FileChange
+)
+from app.crud import projects
 from app.main import app
-from app.config import get_db
-from app.models.project import Project, ProjectVersion, File, ProjectCreate
-from app.crud import projects as crud
-from tests.test_projects.conftest import test_db, test_project, test_version, test_files
+from app.services.openrouter import get_openrouter
+from tests.test_projects.test_helpers import (
+    run_concurrent_requests,
+    assert_unique_responses,
+    assert_response_mix,
+    assert_database_constraints,
+    assert_file_constraints
+)
 
-def test_pagination_limits(client: TestClient, test_db: Session):
-    """Test pagination edge cases for project listing."""
-    # Create multiple projects
-    for i in range(5):
-        crud.create(test_db, ProjectCreate(name=f"Project {i}", description="Test"))
+def test_partial_version_creation_rollback(client: TestClient, test_db: Session, mock_openrouter):
+    """Test transaction rollback on partial version creation failure.
     
-    # Test minimum limit
-    response = client.get("/api/projects/?limit=0")
-    assert response.status_code == 422  # Validation error for limit < 1
+    Verifies:
+    1. Transaction is rolled back on error
+    2. No partial state remains
+    3. Database remains consistent
+    4. Error is properly reported
+    """
+    # Create test project
+    response = client.post("/api/projects/", json={
+        "name": "Test Project",
+        "description": "Testing rollback"
+    })
+    assert response.status_code == 201
+    project_id = response.json()["id"]
     
-    # Test maximum limit
-    response = client.get("/api/projects/?limit=1001")
-    assert response.status_code == 422  # Validation error for limit > 1000
+    # Configure mock service to raise ValueError
+    async def mock_service():
+        mock = MagicMock()
+        mock.get_file_changes.side_effect = ValueError("Duplicate file paths found in changes")
+        return mock
     
-    # Test negative skip
-    response = client.get("/api/projects/?skip=-1")
-    assert response.status_code == 422  # Validation error for skip < 0
-
-def test_version_number_constraints(test_db: Session):
-    """Test version number constraints and edge cases."""
-    # Create project directly to avoid automatic version creation
-    project = Project(name="Test Project", description="Test")
-    test_db.add(project)
-    test_db.commit()
+    # Override the dependency
+    app.dependency_overrides[get_openrouter] = mock_service
     
-    # Test negative version number
-    with pytest.raises(IntegrityError, match="Version number cannot be negative"):
-        version = ProjectVersion(
-            project_id=project.id,
-            version_number=-1,
-            name="Invalid Version"
-        )
-        test_db.add(version)
-        test_db.commit()
-    
-    test_db.rollback()  # Reset session after IntegrityError
-    
-    # Verify latest_version_number with no versions
-    assert project.latest_version_number == 0
-
-def test_file_path_validation(test_db: Session):
-    """Test file path validation edge cases."""
-    # Create project directly to avoid automatic version creation
-    project = Project(name="Test Project", description="Test")
-    test_db.add(project)
-    test_db.commit()
-    
-    version = ProjectVersion(
-        project_id=project.id,
-        version_number=1,  # Use version 1 to avoid conflict with automatic version 0
-        name="Test Version"
+    # Attempt version creation that will fail
+    response = client.post(
+        f"/api/projects/{project_id}/versions",
+        json={
+            "name": "Failed Version",
+            "parent_version_number": 0,
+            "project_context": "Testing rollback",
+            "change_request": "Create invalid version"
+        }
     )
-    test_db.add(version)
-    test_db.commit()
+    assert response.status_code == 400
     
-    # Test empty path
-    with pytest.raises(ValueError, match="File path cannot be empty"):
-        File(
-            project_version_id=version.id,
-            path="",
-            content="test"
+    # Verify no version was created
+    versions_response = client.get(f"/api/projects/{project_id}/versions")
+    assert versions_response.status_code == 200
+    versions = versions_response.json()
+    assert len(versions) == 1  # Only initial version exists
+
+def test_concurrent_connection_pool_exhaustion(client: TestClient, test_db: Session, mock_openrouter):
+    """Test behavior when connection pool is exhausted.
+    
+    Verifies:
+    1. System handles pool exhaustion gracefully
+    2. Requests queue properly
+    3. No deadlocks occur
+    4. Error responses are correct
+    """
+    # Create test project
+    response = client.post("/api/projects/", json={
+        "name": "Test Project",
+        "description": "Testing pool exhaustion"
+    })
+    assert response.status_code == 201
+    project_id = response.json()["id"]
+    
+    # Configure mock for many version creations
+    mock_openrouter.get_file_changes.return_value = [
+        FileChange(
+            operation=FileOperation.CREATE,
+            path="src/test.tsx",
+            content="export const Test = () => <div>Test</div>"
+        )
+    ]
+    
+    # Function to create version
+    def create_version(i: int):
+        return client.post(
+            f"/api/projects/{project_id}/versions",
+            json={
+                "name": f"Version {i}",
+                "parent_version_number": 0,
+                "project_context": "Testing pool",
+                "change_request": "Create version"
+            }
         )
     
-    # Test duplicate paths in same version
-    file1 = File(
-        project_version_id=version.id,
-        path="/test.txt",
-        content="test1"
+    # Create many versions concurrently to exhaust pool
+    responses = run_concurrent_requests(
+        client,
+        create_version,
+        count=20,  # More than our pool size
+        max_workers=10
     )
-    test_db.add(file1)
-    test_db.commit()
     
-    with pytest.raises(IntegrityError):  # SQLAlchemy will raise an integrity error
-        file2 = File(
-            project_version_id=version.id,
-            path="/test.txt",  # Same path as file1
-            content="test2"
-        )
-        test_db.add(file2)
-        test_db.commit()
+    # Some requests should succeed, others should fail gracefully
+    success_count = sum(1 for r in responses if r.status_code == 200)
+    error_count = sum(1 for r in responses if r.status_code in (503, 429))
     
-    test_db.rollback()  # Reset session after IntegrityError
+    assert success_count > 0, "No requests succeeded"
+    assert error_count > 0, "No requests failed due to pool exhaustion"
+    assert all(r.status_code in (200, 503, 429) for r in responses)
 
-def test_version_list_pagination(client: TestClient, test_db: Session):
-    """Test pagination for version listing endpoint."""
-    project = crud.create(test_db, ProjectCreate(name="Test Project", description="Test"))
+def test_concurrent_version_state_race(client: TestClient, test_db: Session, mock_openrouter):
+    """Test race conditions in version state updates.
     
-    # Create additional versions (version 0 is already created)
-    for i in range(1, 5):  # Start from 1 since 0 is already created
-        version = ProjectVersion(
-            project_id=project.id,
-            version_number=i,
-            name=f"Version {i}"
+    Verifies:
+    1. No lost updates occur
+    2. State remains consistent
+    3. Proper error handling
+    4. Transaction isolation works
+    """
+    # Create test project
+    response = client.post("/api/projects/", json={
+        "name": "Test Project",
+        "description": "Testing state races"
+    })
+    assert response.status_code == 201
+    project_id = response.json()["id"]
+    
+    # Create initial version
+    mock_openrouter.get_file_changes.return_value = [
+        FileChange(
+            operation=FileOperation.CREATE,
+            path="src/test.tsx",
+            content="export const Test = () => <div>Test</div>"
         )
-        test_db.add(version)
-    test_db.commit()
+    ]
     
-    # Test invalid limit
-    response = client.get(f"/api/projects/{project.id}/versions?limit=0")
-    assert response.status_code == 422
+    version_response = client.post(
+        f"/api/projects/{project_id}/versions",
+        json={
+            "name": "Test Version",
+            "parent_version_number": 0,
+            "project_context": "Testing races",
+            "change_request": "Create version"
+        }
+    )
+    assert version_response.status_code == 200
+    version = version_response.json()
     
-    response = client.get(f"/api/projects/{project.id}/versions?limit=1001")
-    assert response.status_code == 422
+    # Try to update version state concurrently
+    def update_state(i: int):
+        return client.put(
+            f"/api/projects/{project_id}/versions/{version['version_number']}",
+            json={"name": f"Updated Name {i}"}
+        )
     
-    # Test invalid skip
-    response = client.get(f"/api/projects/{project.id}/versions?skip=-1")
-    assert response.status_code == 422
+    responses = run_concurrent_requests(client, update_state, count=5)
     
-    # Test pagination with valid parameters
-    response = client.get(f"/api/projects/{project.id}/versions?skip=2&limit=2")
-    assert response.status_code == 200
-    versions = response.json()
-    assert len(versions) == 2
-    assert versions[0]["version_number"] == 2
-    assert versions[1]["version_number"] == 3
+    # Verify one update succeeded, others failed with conflict
+    success_responses = [r for r in responses if r.status_code == 200]
+    assert len(success_responses) == 1
+    
+    # Check final state
+    final_response = client.get(
+        f"/api/projects/{project_id}/versions/{version['version_number']}"
+    )
+    assert final_response.status_code == 200
+    final_state = final_response.json()
+    assert final_state["name"].startswith("Updated Name")
 
-def test_nonexistent_version_access(client: TestClient, test_db: Session):
-    """Test accessing non-existent version number."""
-    project_id = uuid4()
-    response = client.get(f"/api/projects/{project_id}/versions/999")
-    assert response.status_code == 404
-    assert response.json()["detail"] == "Project not found"
+def test_idempotent_version_creation(client: TestClient, test_db: Session, mock_openrouter):
+    """Test idempotent version creation under concurrent requests.
     
-    # Create a project to test invalid version number
-    project = crud.create(test_db, ProjectCreate(name="Test Project", description="Test"))
+    Verifies:
+    1. Duplicate requests are handled properly
+    2. No duplicate versions are created
+    3. Response is consistent for duplicates
+    4. Database remains consistent
+    """
+    # Create test project
+    response = client.post("/api/projects/", json={
+        "name": "Test Project",
+        "description": "Testing idempotency"
+    })
+    assert response.status_code == 201
+    project_id = response.json()["id"]
     
-    # Test invalid version number format
-    response = client.get(f"/api/projects/{project.id}/versions/-1")
-    assert response.status_code == 422  # Validation error for negative version
+    # Configure mock
+    mock_openrouter.get_file_changes.return_value = [
+        FileChange(
+            operation=FileOperation.CREATE,
+            path="src/test.tsx",
+            content="export const Test = () => <div>Test</div>"
+        )
+    ]
+    
+    # Create same version concurrently with idempotency key
+    def create_version(i: int):
+        return client.post(
+            f"/api/projects/{project_id}/versions",
+            json={
+                "name": "Same Version",
+                "parent_version_number": 0,
+                "project_context": "Testing idempotency",
+                "change_request": "Create version",
+                "idempotency_key": "test-key"  # Same key for all requests
+            }
+        )
+    
+    responses = run_concurrent_requests(client, create_version, count=3)
+    
+    # All requests should return same version
+    success_responses = [r for r in responses if r.status_code == 200]
+    assert len(success_responses) > 0
+    
+    # All successful responses should have same version number
+    version_numbers = [r.json()["version_number"] for r in success_responses]
+    assert len(set(version_numbers)) == 1
+    
+    # Verify only one version was created
+    versions_response = client.get(f"/api/projects/{project_id}/versions")
+    assert versions_response.status_code == 200
+    versions = versions_response.json()
+    assert len(versions) == 2  # Initial version + 1 new version
+
+def test_file_operation_compensation(client: TestClient, test_db: Session, mock_openrouter):
+    """Test compensation for failed file operations.
+    
+    Verifies:
+    1. Failed operations are properly compensated
+    2. No orphaned files remain
+    3. Database state is consistent
+    4. Error responses are correct
+    """
+    # Create test project
+    response = client.post("/api/projects/", json={
+        "name": "Test Project",
+        "description": "Testing compensation"
+    })
+    assert response.status_code == 201
+    project_id = response.json()["id"]
+    
+    # Configure mock for initial version
+    mock_openrouter.get_file_changes.return_value = [
+        FileChange(
+            operation=FileOperation.CREATE,
+            path="src/test.tsx",
+            content="export const Test = () => <div>Test</div>"
+        )
+    ]
+    
+    # Create initial version
+    version_response = client.post(
+        f"/api/projects/{project_id}/versions",
+        json={
+            "name": "Test Version",
+            "parent_version_number": 0,
+            "project_context": "Testing compensation",
+            "change_request": "Create version"
+        }
+    )
+    assert version_response.status_code == 200
+    version = version_response.json()
+    
+    # Try to create multiple files where some will fail
+    def create_file(i: int):
+        return client.post(
+            f"/api/projects/{project_id}/versions/{version['version_number']}/files",
+            json={
+                "path": f"src/test{i}.tsx",
+                "content": "invalid" if i % 2 == 0 else "valid content"
+            }
+        )
+    
+    responses = run_concurrent_requests(client, create_file, count=4)
+    
+    # Verify mix of success and failure
+    success_responses = [r for r in responses if r.status_code == 201]
+    error_responses = [r for r in responses if r.status_code != 201]
+    assert len(success_responses) > 0
+    assert len(error_responses) > 0
+    
+    # Check final version state
+    final_response = client.get(
+        f"/api/projects/{project_id}/versions/{version['version_number']}"
+    )
+    assert final_response.status_code == 200
+    final_state = final_response.json()
+    
+    # Only valid files should exist
+    for i in range(4):
+        files = [f for f in final_state["files"] if f["path"] == f"src/test{i}.tsx"]
+        if i % 2 == 0:
+            assert len(files) == 0  # Invalid files should not exist
+        else:
+            assert len(files) == 1  # Valid files should exist

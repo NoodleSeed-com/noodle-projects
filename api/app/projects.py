@@ -5,6 +5,7 @@ from typing import List
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, Path
 from sqlalchemy.orm import Session
+import sqlalchemy.exc
 
 from .config import settings, get_db
 from .crud import projects as crud
@@ -182,6 +183,14 @@ def create_project_version(
         return new_version
         
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        # Handle validation errors (empty paths, duplicate paths, etc.)
+        raise HTTPException(status_code=400, detail=str(e))
+    except sqlalchemy.exc.IntegrityError as e:
+        # Handle database constraint violations
+        raise HTTPException(status_code=409, detail=str(e))
+    except sqlalchemy.exc.OperationalError as e:
+        # Handle transaction/concurrency errors
+        raise HTTPException(status_code=503, detail=str(e))
     except Exception as e:
+        # Handle unexpected errors
         raise HTTPException(status_code=500, detail=f"Error creating version: {str(e)}")

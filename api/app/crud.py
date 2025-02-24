@@ -196,83 +196,128 @@ class ProjectCRUD:
             
         Returns:
             New version with applied changes, or None if parent version not found
-        """
-        # Get parent version with its files
-        parent_version = db.execute(
-            select(ProjectVersion)
-            .options(joinedload(ProjectVersion.files))
-            .filter(
-                ProjectVersion.project_id == project_id,
-                ProjectVersion.version_number == parent_version_number
-            )
-        ).unique().scalar_one_or_none()
-        
-        if not parent_version:
-            return None
             
-        # Create new version with incremented version number
-        new_version = ProjectVersion(
-            project_id=project_id,
-            version_number=parent_version.version_number + 1,
-            parent_version_id=parent_version.id,
-            name=name
-        )
-        db.add(new_version)
-        db.flush()  # Get new_version.id without committing
-        
+        Raises:
+            ValueError: If file operations are invalid
+            sqlalchemy.exc.IntegrityError: If version number conflict occurs
+        """
+        # Validate file paths before starting transaction
+        paths = {}
+        for change in changes:
+            if not change.path or not change.path.strip():
+                raise ValueError(f"File path cannot be empty")
+            if change.operation in (FileOperation.CREATE, FileOperation.UPDATE) and not change.content:
+                raise ValueError(f"Content required for {change.operation} operation on {change.path}")
+            
+            # Check for duplicate paths in any operation
+            if change.path in paths:
+                raise ValueError(f"Duplicate file path in changes: {change.path}")
+            paths[change.path] = True
+
         # Create a map of existing files by path
         existing_files = {file.path: file for file in parent_version.files}
         
-        # Create list to track all files for the new version
-        files_to_add = []
-        
-        # First copy all files from parent version
-        for path, file in existing_files.items():
-            files_to_add.append(File(
-                project_version_id=new_version.id,
-                path=path,
-                content=file.content
-            ))
-        
-        # Apply changes
+        # Check for duplicate paths with existing files
         for change in changes:
-            if change.operation == FileOperation.CREATE:
-                if not change.content:
-                    raise ValueError(f"Content required for CREATE operation on {change.path}")
-                files_to_add.append(File(
-                    project_version_id=new_version.id,
-                    path=change.path,
-                    content=change.content
-                ))
-            
-            elif change.operation == FileOperation.UPDATE:
-                if not change.content:
-                    raise ValueError(f"Content required for UPDATE operation on {change.path}")
-                if change.path not in existing_files:
-                    raise ValueError(f"Cannot update non-existent file: {change.path}")
-                # Remove old file if it exists
-                files_to_add = [f for f in files_to_add if f.path != change.path]
-                # Add updated file
-                files_to_add.append(File(
-                    project_version_id=new_version.id,
-                    path=change.path,
-                    content=change.content
-                ))
-            
-            elif change.operation == FileOperation.DELETE:
-                if change.path not in existing_files:
-                    raise ValueError(f"Cannot delete non-existent file: {change.path}")
-                # Remove file from list
-                files_to_add = [f for f in files_to_add if f.path != change.path]
-        
-        # Set the files relationship and commit
-        new_version.files = files_to_add
-        db.add(new_version)
-        db.commit()
-        db.refresh(new_version)
-        
-        # Return the complete version response
-        return ProjectCRUD.get_version(db, project_id, new_version.version_number)
+            if change.operation == FileOperation.CREATE and change.path in existing_files:
+                raise ValueError(f"Cannot create file that already exists: {change.path}")
+
+        try:
+            with db.begin():
+                # Get parent version with its files and lock the row
+                parent_version = db.execute(
+                    select(ProjectVersion)
+                    .options(joinedload(ProjectVersion.files))
+                    .filter(
+                        ProjectVersion.project_id == project_id,
+                        ProjectVersion.version_number == parent_version_number
+                    )
+                    .with_for_update()  # Lock the row
+                ).unique().scalar_one_or_none()
+                
+                if not parent_version:
+                    return None
+                
+                # Get the latest version number for this project
+                latest_version = db.execute(
+                    select(ProjectVersion.version_number)
+                    .filter(ProjectVersion.project_id == project_id)
+                    .order_by(ProjectVersion.version_number.desc())
+                    .with_for_update()  # Lock to prevent concurrent updates
+                ).scalar_one_or_none()
+                
+                new_version_number = (latest_version or -1) + 1
+                
+                # Create new version with the next version number
+                new_version = ProjectVersion(
+                    project_id=project_id,
+                    version_number=new_version_number,
+                    parent_version_id=parent_version.id,
+                    name=name
+                )
+                db.add(new_version)
+                db.flush()  # Get new_version.id without committing
+                
+                # Create a map of existing files by path
+                existing_files = {file.path: file for file in parent_version.files}
+                
+                # Create list to track all files for the new version
+                files_to_add = []
+                
+                # First copy all files from parent version
+                for path, file in existing_files.items():
+                    files_to_add.append(File(
+                        project_version_id=new_version.id,
+                        path=path,
+                        content=file.content
+                    ))
+                
+                # Apply changes
+                for change in changes:
+                    if change.operation == FileOperation.CREATE:
+                        if not change.content:
+                            raise ValueError(f"Content required for CREATE operation on {change.path}")
+                        files_to_add.append(File(
+                            project_version_id=new_version.id,
+                            path=change.path,
+                            content=change.content
+                        ))
+                    
+                    elif change.operation == FileOperation.UPDATE:
+                        if not change.content:
+                            raise ValueError(f"Content required for UPDATE operation on {change.path}")
+                        if change.path not in existing_files:
+                            raise ValueError(f"Cannot update non-existent file: {change.path}")
+                        # Remove old file if it exists
+                        files_to_add = [f for f in files_to_add if f.path != change.path]
+                        # Add updated file
+                        files_to_add.append(File(
+                            project_version_id=new_version.id,
+                            path=change.path,
+                            content=change.content
+                        ))
+                    
+                    elif change.operation == FileOperation.DELETE:
+                        if change.path not in existing_files:
+                            raise ValueError(f"Cannot delete non-existent file: {change.path}")
+                        # Remove file from list
+                        files_to_add = [f for f in files_to_add if f.path != change.path]
+                
+                # Set the files relationship and commit
+                new_version.files = files_to_add
+                db.add(new_version)
+                db.flush()  # Use flush instead of commit to keep transaction open
+                db.refresh(new_version)
+                
+                # Get version response within same transaction
+                response = ProjectCRUD.get_version(db, project_id, new_version.version_number)
+                
+                # Let the context manager handle commit/rollback
+                return response
+                
+        except Exception as e:
+            # Let the context manager handle rollback
+            raise e
 
 # Export the CRUD operations
 projects = ProjectCRUD()

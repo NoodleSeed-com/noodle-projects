@@ -10,7 +10,7 @@ from sqlalchemy import String, Integer, Boolean, Text, ForeignKey, DateTime, fun
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy import select
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from pydantic import Field
+from pydantic import Field, field_validator, constr
 
 from .base import Base, BaseSchema
 
@@ -137,7 +137,6 @@ class File(Base):
     version: Mapped["ProjectVersion"] = relationship(back_populates="files")
 
 # Pydantic Schemas
-from pydantic import Field, constr
 
 class ProjectBase(BaseSchema):
     """Base schema for project data."""
@@ -202,6 +201,20 @@ class FileChange(BaseSchema):
     operation: FileOperation
     path: str = Field(..., description="Path of the file to operate on")
     content: Optional[str] = Field(None, description="Content for create/update operations")
+
+    @field_validator('path')
+    @classmethod
+    def validate_path(cls, v: str) -> str:
+        if not v or not v.strip():
+            raise ValueError("File path cannot be empty")
+        return v.strip()
+
+    @field_validator('content')
+    @classmethod
+    def validate_content(cls, v: Optional[str], info) -> Optional[str]:
+        if info.data.get('operation') in (FileOperation.CREATE, FileOperation.UPDATE) and not v:
+            raise ValueError(f"Content required for {info.data.get('operation')} operation")
+        return v
 
 class AIResponse(BaseSchema):
     """Schema for AI response containing file changes."""

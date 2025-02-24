@@ -1,0 +1,3 @@
+"""
+Test projects package initialization.
+"""

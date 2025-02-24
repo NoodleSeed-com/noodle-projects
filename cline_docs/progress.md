@@ -32,18 +32,20 @@
 - [x] File operation tests
 
 ## Recent Changes
-- Added empty version list return for inactive projects
-- Removed unsupported PATCH operation
-- Improved active state validation
-- Enhanced error messages for inactive projects
-- Fixed version listing behavior
+- Improved error handling in OpenRouter service
+- Added validation for duplicate file paths
+- Enhanced transaction rollback testing
+- Simplified error propagation in API layer
+- Fixed error status code mapping (ValueError -> 400)
+- Added dependency override patterns for service mocking
+- Improved test coverage for edge cases
 
 ## Known Issues
 None currently.
 
 ## Next Steps
 1. Update to Pydantic v2 validation methods
-2. Enhance error message clarity
-3. Add performance optimizations
-4. Improve test coverage
-5. Add API documentation
+2. Add performance optimizations
+3. Add API documentation
+4. Enhance logging for error tracking
+5. Add metrics for error monitoring

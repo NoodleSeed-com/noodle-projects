@@ -138,3 +138,47 @@
    - Verify error messages
    - Check status codes
    - Validate error formats
+
+## Error Handling Patterns
+
+### Service Layer Errors
+1. OpenRouter Service:
+   - Validate file paths before processing
+   - Check for duplicate paths in changes
+   - Raise ValueError for validation failures
+   - Maintain consistent error messages
+
+2. Error Propagation:
+   - Catch service errors at API layer
+   - Convert to appropriate HTTP status codes:
+     * ValueError -> 400 Bad Request
+     * IntegrityError -> 409 Conflict
+     * OperationalError -> 503 Service Unavailable
+   - Maintain transaction integrity
+   - Roll back on failure
+
+### Transaction Management
+1. Rollback Patterns:
+   - Roll back on validation errors
+   - No partial state persistence
+   - Maintain database consistency
+   - Clear error reporting
+
+2. Edge Case Handling:
+   - Handle duplicate paths
+   - Validate file operations
+   - Check version constraints
+   - Maintain referential integrity
+
+### Testing Strategy
+1. Error Scenarios:
+   - Test validation failures
+   - Verify error propagation
+   - Check transaction rollback
+   - Validate error responses
+
+2. Mock Integration:
+   - Use FastAPI dependency overrides
+   - Mock service responses
+   - Simulate error conditions
+   - Verify error handling flow

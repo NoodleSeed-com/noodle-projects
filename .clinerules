@@ -178,14 +178,62 @@
    - Document required context parameters
    - Example: Pass current files when requesting changes
 
+### Service Error Handling
+1. Status Code Mapping:
+   - 400: Validation errors (ValueError)
+   - 403: Inactive project operations
+   - 404: Resource not found
+   - 409: Integrity constraint violations
+   - 422: Request validation errors
+   - 503: Service unavailable
+
+2. Service Layer:
+   - Validate inputs before processing
+   - Raise appropriate exceptions
+   - Maintain consistent error messages
+   - Document error conditions
+
+3. Error Propagation:
+   - Catch errors at appropriate layer
+   - Convert to HTTP status codes
+   - Maintain transaction integrity
+   - Roll back on failure
+
+4. Testing Requirements:
+   - Test all error paths
+   - Verify error propagation
+   - Check transaction rollback
+   - Validate error responses
+   - Mock service errors
+
 ### Service Testing
-- Use dependency injection for external services
-- Avoid direct imports of service instances
-- Make test mode behavior configurable
-- Document mocking requirements in test files
-- Use pytest fixtures for service mocks
-- Test both success and error paths
-- Verify service calls with assert_called_once_with
+1. Dependency Injection:
+   - Use FastAPI dependency overrides
+   - Mock service responses
+   - Test error conditions
+   - Verify error handling flow
+
+2. Mock Patterns:
+   - Override service dependencies
+   - Simulate error conditions
+   - Test transaction rollback
+   - Verify state consistency
+
+3. Testing Requirements:
+   - Test success paths
+   - Test error paths
+   - Verify error propagation
+   - Check transaction integrity
+   - Validate error responses
+
+4. Best Practices:
+   - Use dependency injection
+   - Avoid direct imports
+   - Configure test mode behavior
+   - Document mocking requirements
+   - Use pytest fixtures
+   - Test edge cases
+   - Clear mock overrides
 
 #### Test Structure
 ```
@@ -294,10 +342,32 @@ pytest api/tests/ -v
 - Regular security audits
 
 ### Error Handling
-- Use appropriate status codes
-- Provide clear error messages
-- Log errors properly
-- Handle edge cases
+1. Status Code Mapping:
+   - 400: Validation errors (ValueError)
+   - 403: Inactive project operations
+   - 404: Resource not found
+   - 409: Integrity constraint violations
+   - 422: Request validation errors
+   - 503: Service unavailable
+
+2. Service Layer:
+   - Validate inputs before processing
+   - Raise appropriate exceptions
+   - Maintain consistent error messages
+   - Document error conditions
+
+3. Error Propagation:
+   - Catch errors at appropriate layer
+   - Convert to HTTP status codes
+   - Maintain transaction integrity
+   - Roll back on failure
+
+4. Testing Requirements:
+   - Test all error paths
+   - Verify error propagation
+   - Check transaction rollback
+   - Validate error responses
+   - Mock service errors
 
 ## CLI Commands
 
