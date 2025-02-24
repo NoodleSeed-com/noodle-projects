@@ -16,20 +16,12 @@ def _read_prompt_file(filename: str) -> str:
 class OpenRouterService:
     """Service for interacting with OpenRouter API."""
     
-    def __init__(self):
+    def __init__(self, client=None):
         """Initialize the OpenRouter service."""
-        testing = os.getenv("TESTING", "").lower()
-        if testing in ("true", "1", "yes"):
-            self.client = None
-        else:
-            self.client = self._get_client()
+        self.client = client or self._get_client()
     
     def _get_client(self) -> OpenAI:
         """Get OpenAI client configured for OpenRouter."""
-        testing = os.getenv("TESTING", "").lower()
-        if testing in ("true", "1", "yes"):
-            return None
-            
         api_key = os.getenv("OPENROUTER_API_KEY")
         if not api_key:
             raise ValueError("OPENROUTER_API_KEY environment variable is required")
@@ -62,7 +54,7 @@ class OpenRouterService:
         Raises:
             ValueError: If AI response is invalid or contains duplicate paths
         """
-        if self.client is None:
+        if self.client is None or self.client.chat is None:
             # During testing, we still validate the mock data
             # Note: In testing mode, the mock data is injected by the test
             # through the mock's return_value, so we don't need to return anything here.
