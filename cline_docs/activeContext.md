@@ -1,28 +1,21 @@
 # Active Context
 
-## Current State
-Currently addressing test failures with a focus on transaction management issues in concurrent operations.
+## Current State (Updated 2024-02-23)
+Currently addressing test failures with a focus on transaction management in crud.py's create method.
 
 ## Test Failures (In Priority Order)
-1. Event Loop Management (Current Focus)
-   - test_create_project_with_version_0[trio]: RuntimeError with event loop
-   - Error: "Task got Future attached to a different loop"
-   - Root cause: Event loop sharing between tests
-   - Solution in progress: Proper event loop configuration and cleanup
+1. Transaction Management (Current Focus)
+   - test_create_project_with_version_0[asyncio/trio]
+   - Error: "Can't operate on closed transaction inside context manager"
+   - Root cause: Multiple commits in crud.py create() method conflicting with test fixture transaction
+   - Next steps: Refactor create() method to use a single transaction
 
-2. Transaction Management
-   - test_health_check and test_cors_middleware: InterfaceError with asyncpg
-   - Error: "cannot perform operation: another operation is in progress"
-   - Root cause: Concurrent operation conflicts
-   - Solution: Need proper transaction isolation and connection state management
-
-3. Model Access Pattern
-   - Resolved: test_create_project_with_version_0[asyncio]
+2. Model Access Pattern (Resolved)
+   - test_health_check and test_cors_middleware: PASSING
    - Solution implemented:
-     * Removed duplicate relationship definition
-     * Using selectin loading strategy
-     * Converted hybrid_property to regular property
-     * Calculating latest_version_number from loaded data
+     * Session-scoped event loop and engine fixtures
+     * Function-scoped database session with proper transaction management
+     * Improved cleanup between tests
 
 2. Response Validation (Future Tasks)
    - test_concurrent_version_creation

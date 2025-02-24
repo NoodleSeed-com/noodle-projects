@@ -1,25 +1,26 @@
 # Progress Report
 
-## Test Status
+## Test Status (Updated 2024-02-23)
 
-### Passing Tests
-- test_create_project_with_version_0[asyncio]: Successfully fixed by:
-  - Removing duplicate relationship definition in Project model
-  - Using selectin loading strategy for versions relationship
-  - Converting hybrid_property to regular property for latest_version_number
+### Test Investigation Progress
+- Identified transaction management issues in test fixtures
+- Implemented session-scoped event loop and engine fixtures
+- Added proper transaction management with db_session fixture
+- Discovered issues with crud.py's transaction handling
 
-### Remaining Test Failures
-1. test_create_project_with_version_0[trio]
-   - Issue: RuntimeError with event loop and task management
-   - Error: "Task got Future attached to a different loop"
+### Current Test Status
+1. test_create_project_with_version_0[asyncio/trio]
+   - Issue: InvalidRequestError in crud.py
+   - Error: "Can't operate on closed transaction inside context manager"
+   - Root cause: Multiple commits in create() method conflicting with test transaction
 
 2. test_health_check[asyncio/trio]
-   - Issue: InterfaceError with asyncpg
-   - Error: "cannot perform operation: another operation is in progress"
+   - Status: PASSING
+   - Fixed by improved transaction management in fixtures
 
 3. test_cors_middleware[asyncio/trio]
-   - Issue: Same InterfaceError as health_check tests
-   - Error: "cannot perform operation: another operation is in progress"
+   - Status: PASSING
+   - Fixed by improved transaction management in fixtures
 
 ## Recent Changes
 
