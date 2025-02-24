@@ -4,12 +4,31 @@ Version database model.
 from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
-from sqlalchemy import String, Integer, ForeignKey, UniqueConstraint, CheckConstraint
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import String, Integer, ForeignKey, UniqueConstraint, CheckConstraint, event
+from sqlalchemy.orm import Mapped, mapped_column, relationship, object_session, Session
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.exc import IntegrityError
+
+from sqlalchemy.orm.session import object_session
 
 from .base import Base
+from .file import File
+from .project import Project
+from ..errors import NoodleError, ErrorType
+
+# Register event listener for version validation
+@event.listens_for(Session, 'before_flush')
+def validate_version_creation(session, flush_context, instances):
+    """Validate version creation before flush.
+    
+    Verifies:
+    1. Project exists
+    2. Project is active
+    """
+    for obj in session.new:
+        if isinstance(obj, Version):
+            project = session.get(Project, obj.project_id)
+            if not project or not project.active:
+                raise NoodleError("Cannot create version in inactive project")
 
 class Version(Base):
     """SQLAlchemy model for versions.
@@ -34,19 +53,27 @@ class Version(Base):
     )
     
     def __init__(self, **kwargs):
-        if 'version_number' in kwargs and kwargs['version_number'] < 0:
-            raise IntegrityError(
-                statement="version_number validation",
-                params={},
-                orig=Exception("Version number cannot be negative")
-            )
+        # Required field validation
+        if 'project_id' not in kwargs:
+            raise NoodleError("project_id is required")
+            
+        # Default version_number to 0 if not provided
+        if 'version_number' not in kwargs:
+            kwargs['version_number'] = 0
+            
+        # Python-level validation for version_number
+        if kwargs['version_number'] < 0:
+            raise NoodleError("Version number cannot be negative")
+            
+        # Initialize to set up relationships
         super().__init__(**kwargs)
-    
+
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="versions")
     files: Mapped[List["File"]] = relationship(
         back_populates="version",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        order_by="File.path"
     )
 
     @hybrid_property

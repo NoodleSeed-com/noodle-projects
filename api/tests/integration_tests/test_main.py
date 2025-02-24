@@ -33,7 +33,7 @@ async def test_create_project_with_version_0(client):
     # Verify version 0 metadata
     assert version_0["version_number"] == 0
     assert version_0["name"] == "Initial Version"
-    assert version_0["parent_version_id"] is None
+    assert version_0["parent_id"] is None
     
     # Get expected files from template
     expected_files = dict(get_template_files())

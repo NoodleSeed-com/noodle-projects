@@ -133,7 +133,7 @@ The API will be available at `http://localhost:8000`
   "project_id": "uuid",
   "version_number": 0,
   "name": "string",
-  "parent_version_id": "uuid",
+  "parent_id": "uuid",
   "parent_version": 0,
   "created_at": "datetime",
   "updated_at": "datetime",

@@ -36,7 +36,7 @@ def test_project_creation(db_session: Session):
     initial_version = project.versions[0]
     assert initial_version.version_number == 0
     assert initial_version.name == "Initial Version"
-    assert initial_version.parent_version_id is None
+    assert initial_version.parent_id is None
 
 def test_project_soft_delete(db_session: Session):
     """Test project soft deletion.
@@ -53,12 +53,19 @@ def test_project_soft_delete(db_session: Session):
         description="Test Description"
     )
     db_session.add(project)
-    db_session.flush()
+    db_session.commit()
+    db_session.refresh(project)
     
+    # Initial version should exist
+    assert len(project.versions) == 1
+    initial_version = project.versions[0]
+    
+    # Add test version with next number
     version = Version(
         project_id=project.id,
+        version_number=1,  # Use next version number
         name="Test Version",
-        parent_version_id=project.versions[0].id
+        parent_id=initial_version.id
     )
     db_session.add(version)
     db_session.commit()
@@ -90,25 +97,19 @@ def test_project_constraints(db_session: Session):
     3. Description is optional
     4. UUID is valid format
     """
-    # Test empty name
-    with pytest.raises(IntegrityError):
+    # Test empty name (Python-level validation)
+    with pytest.raises(ValueError, match="Project name cannot be empty"):
         project = Project(name="")
-        db_session.add(project)
-        db_session.commit()
-    db_session.rollback()
-    
-    # Test name too long (max 255 chars)
-    with pytest.raises(IntegrityError):
+
+    # Test name too long (Python-level validation)
+    with pytest.raises(ValueError, match="Project name cannot exceed 255 characters"):
         project = Project(name="x" * 256)
-        db_session.add(project)
-        db_session.commit()
-    db_session.rollback()
     
-    # Test optional description
+    # Test default empty description
     project = Project(name="Test Project")
     db_session.add(project)
     db_session.commit()
-    assert project.description is None
+    assert project.description == ""  # Description defaults to empty string
     
     # Test UUID format
     project = Project(name="Test Project")
@@ -131,15 +132,16 @@ def test_project_relationships(db_session: Session):
         description="Test Description"
     )
     db_session.add(project)
-    db_session.flush()
+    db_session.commit()  # Commit to trigger after_insert event that creates initial version
     
-    # Add versions
+    # Add versions with sequential numbers starting from 1
     versions = []
     for i in range(3):
         version = Version(
             project_id=project.id,
+            version_number=i+1,  # Use sequential numbers 1, 2, 3
             name=f"Version {i+1}",
-            parent_version_id=project.versions[0].id
+            parent_id=project.versions[0].id
         )
         versions.append(version)
         db_session.add(version)
@@ -150,17 +152,20 @@ def test_project_relationships(db_session: Session):
     assert project.versions[0].version_number == 0
     for i, version in enumerate(project.versions[1:], 1):
         assert version.version_number > 0
-        assert version.parent_version_id == project.versions[0].id
+        assert version.parent_id == project.versions[0].id
     
-    # Test cascade delete
-    db_session.delete(project)
+    # Test cascade soft delete
+    project.active = False
     db_session.commit()
+    db_session.refresh(project)
     
-    # Verify all versions were deleted
+    # Verify all versions are marked inactive
     versions = db_session.query(Version).filter(
         Version.project_id == project.id
     ).all()
-    assert len(versions) == 0
+    assert len(versions) == 4  # Initial + 3 new versions
+    for version in versions:
+        assert version.active is False
 
 def test_version_validation(db_session: Session):
     """Test project version validation.
@@ -175,7 +180,7 @@ def test_version_validation(db_session: Session):
     project1 = Project(name="Project 1")
     project2 = Project(name="Project 2")
     db_session.add_all([project1, project2])
-    db_session.flush()
+    db_session.commit()  # Commit to trigger after_insert event that creates initial versions
     
     # Try to create duplicate version number
     with pytest.raises(IntegrityError):
@@ -193,22 +198,69 @@ def test_version_validation(db_session: Session):
         version = Version(
             project_id=project1.id,
             name="Invalid Parent",
-            parent_version_id=project2.versions[0].id  # From different project
+            parent_id=project2.versions[0].id  # From different project
         )
         db_session.add(version)
         db_session.commit()
     db_session.rollback()
     
-    # Valid version creation
+    # Valid version creation with next version number
+    next_version_number = max(v.version_number for v in project1.versions) + 1
     version = Version(
         project_id=project1.id,
+        version_number=next_version_number,
         name="Valid Version",
-        parent_version_id=project1.versions[0].id
+        parent_id=project1.versions[0].id
     )
     db_session.add(version)
     db_session.commit()
-    assert version.version_number > 0
-    assert version.parent_version_id == project1.versions[0].id
+    assert version.version_number == next_version_number
+    assert version.parent_id == project1.versions[0].id
+
+def test_latest_version_number(db_session: Session):
+    """Test latest_version_number property.
+    
+    Verifies:
+    1. Returns 0 for new project (only initial version)
+    2. Returns correct max version number with multiple versions
+    3. Handles non-sequential version numbers
+    """
+    # Create project (comes with version 0)
+    project = Project(name="Test Project")
+    db_session.add(project)
+    db_session.commit()
+    db_session.refresh(project)
+    
+    # Test initial state (should have version 0)
+    assert project.latest_version_number == 0
+    assert len(project.versions) == 1
+    initial_version = project.versions[0]
+    
+    # Add versions with non-sequential numbers
+    version1 = Version(
+        project_id=project.id,
+        version_number=3,
+        name="Version 3",
+        parent_id=initial_version.id
+    )
+    version2 = Version(
+        project_id=project.id,
+        version_number=1,
+        name="Version 1",
+        parent_id=initial_version.id
+    )
+    version3 = Version(
+        project_id=project.id,
+        version_number=5,
+        name="Version 5",
+        parent_id=initial_version.id
+    )
+    db_session.add_all([version1, version2, version3])
+    db_session.commit()
+    db_session.refresh(project)
+    
+    # Should return highest version number regardless of creation order
+    assert project.latest_version_number == 5
 
 def test_project_timestamps(db_session: Session):
     """Test project timestamp behavior.

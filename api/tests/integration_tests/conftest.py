@@ -77,7 +77,7 @@ def test_version():
     return {
         "version_number": 1,
         "name": "Test Version",
-        "parent_version_id": None
+        "parent_id": None
     }
 
 @pytest.fixture

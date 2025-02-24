@@ -45,7 +45,7 @@ async def test_version_0_creation(test_db: AsyncSession):
     assert version_0 is not None
     assert version_0.version_number == 0
     assert version_0.name == "Initial Version"
-    assert version_0.parent_version_id is None
+    assert version_0.parent_id is None
     
     # Get expected files from template
     expected_files = get_template_files()

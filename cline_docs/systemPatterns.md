@@ -278,3 +278,194 @@ Benefits:
    - Verification points
    - Setup requirements
    - Expected results
+
+### SQLAlchemy Testing Patterns
+
+1. Session Management:
+   ```python
+   # Create and commit
+   db_session.add(project)
+   db_session.commit()
+   db_session.refresh(project)  # Reload to get generated values
+   
+   # Verify state after commit
+   assert len(project.versions) == 1
+   initial_version = project.versions[0]
+   ```
+
+2. Unique Constraint Handling:
+   - Check table constraints before creating records
+   - Use explicit version numbers to avoid conflicts
+   - Handle unique constraint violations in tests
+   - Example:
+   ```python
+   # Initial version (0) is auto-created
+   version = Version(
+       project_id=project.id,
+       version_number=1,  # Use explicit next number
+       name="Test Version"
+   )
+   ```
+
+3. Event Listener Testing:
+   - Commit to trigger after_insert events
+   - Refresh to load generated relationships
+   - Verify event results after commit
+   - Example:
+   ```python
+   # Create project triggers version creation
+   project = Project(name="Test")
+   db_session.add(project)
+   db_session.commit()
+   db_session.refresh(project)
+   
+   # Verify event created version
+   assert len(project.versions) == 1
+   assert project.versions[0].version_number == 0
+   ```
+
+4. Relationship Testing:
+   - Test cascading effects (e.g., soft delete)
+   - Verify bidirectional relationships
+   - Check constraint enforcement
+   - Example:
+   ```python
+   # Test soft delete cascades
+   project.active = False
+   db_session.commit()
+   db_session.refresh(project)
+   
+   for version in project.versions:
+       assert version.active is False
+   ```
+
+5. Common Pitfalls:
+   - Using flush() when commit() is needed for events
+   - Not refreshing after commits
+   - Duplicate version numbers
+   - Missing relationship loads
+
+### Version Management Patterns
+
+1. Version Relationships:
+   ```python
+   class Version(Base):
+       # Self-referential relationship for version hierarchy
+       parent_id = mapped_column(ForeignKey("versions.id"))
+       # Each version belongs to a project
+       project_id = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+   ```
+
+2. Version Numbering:
+   - Version 0 reserved for initial version
+   - Auto-create initial version on project creation
+   - Sequential numbering for clarity
+   - Unique constraint on (project_id, version_number)
+   ```python
+   @event.listens_for(Project, 'after_insert')
+   def create_initial_version(mapper, connection, project):
+       """Create version 0 when project is created."""
+       version = Version(
+           project_id=project.id,
+           version_number=0,
+           name="Initial Version"
+       )
+   ```
+
+3. Version Deletion Patterns:
+   - Consider referential integrity
+   - Parent versions referenced by children
+   - Two approaches:
+     a. Soft Delete (Preferred):
+        - Keep version records
+        - Mark as inactive
+        - Maintain history
+        - Example:
+        ```python
+        # Soft delete cascades to versions
+        project.active = False
+        db_session.commit()
+        ```
+     b. Hard Delete:
+        - Requires careful ordering
+        - Delete children first
+        - Complex with deep hierarchies
+        - Can lose history
+
+4. Version Testing Patterns:
+   - Test initial version creation
+   - Verify numbering sequence
+   - Check relationship constraints
+   - Example:
+   ```python
+   def test_version_creation(db_session):
+       project = Project(name="Test")
+       db_session.add(project)
+       db_session.commit()  # Triggers initial version
+       
+       # Add new version
+       version = Version(
+           project_id=project.id,
+           version_number=1,  # Next after initial 0
+           parent_id=project.versions[0].id
+       )
+       db_session.add(version)
+       db_session.commit()
+   ```
+
+5. Version Management Lessons:
+   - Always commit() to trigger version events
+   - Use explicit version numbers
+   - Consider relationship impacts
+   - Prefer soft delete for history
+   - Test deletion scenarios thoroughly
+   - Document version patterns
+
+6. Version Validation Patterns:
+   - Python-level validation in __init__:
+     * Empty paths
+     * Null content
+     * Project active state
+     * Path length limits
+   - Database-level constraints:
+     * Unique version numbers per project
+     * Foreign key relationships
+     * Cascade delete behavior
+
+7. Version Testing Patterns:
+   - Test both Python and DB validations:
+     ```python
+     # Python-level validation
+     with pytest.raises(ValueError, match="File path cannot be empty"):
+         file = File(path="", content="test")
+     
+     # Database-level validation
+     with pytest.raises(IntegrityError):
+         version = Version(version_number=0)  # Duplicate number
+         db_session.add(version)
+         db_session.commit()
+     ```
+   - Use commit() to trigger events:
+     ```python
+     # Create project (triggers initial version)
+     project = Project(name="Test")
+     db_session.add(project)
+     db_session.commit()  # Not flush()
+     db_session.refresh(project)
+     ```
+   - Set explicit version numbers:
+     ```python
+     # Get next available number
+     next_number = max(v.version_number for v in project.versions) + 1
+     version = Version(version_number=next_number)
+     ```
+   - Test soft delete cascades:
+     ```python
+     # Soft delete cascades to versions
+     project.active = False
+     db_session.commit()
+     db_session.refresh(project)
+     
+     for version in project.versions:
+         assert version.active is False
+     ```

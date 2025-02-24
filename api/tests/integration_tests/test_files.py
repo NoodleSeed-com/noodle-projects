@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
-from app.models.project import Version, File
+from app.models.version import Version
+from app.models.file import File
 from sqlalchemy.exc import IntegrityError
 import pytest
 
@@ -18,7 +19,7 @@ def test_get_specific_version_with_files(client: TestClient, test_project, test_
         project_id=project_id,
         version_number=1,
         name="Child Version",
-        parent_version_id=initial_version_id
+        parent_id=initial_version_id
     )
     test_db.add(child_version)
     test_db.flush()  # Flush to get the ID without committing
@@ -42,8 +43,8 @@ def test_get_specific_version_with_files(client: TestClient, test_project, test_
     assert data["version_number"] == 1
     assert data["name"] == "Child Version"
     assert data["parent_version"] == 0  # Parent is version 0
-    assert "parent_version_id" in data
-    assert data["parent_version_id"] == initial_version_id
+    assert "parent_id" in data
+    assert data["parent_id"] == initial_version_id
     
     # Verify files
     assert "files" in data

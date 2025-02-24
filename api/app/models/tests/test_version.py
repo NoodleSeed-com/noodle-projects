@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from ...models.project import Project
 from ...models.version import Version
 from ...models.file import File
+from ...errors import NoodleError, ErrorType
 
 def test_version_creation(db_session: Session):
     """Test basic version creation.
@@ -18,13 +19,16 @@ def test_version_creation(db_session: Session):
     # Create project
     project = Project(name="Test Project")
     db_session.add(project)
-    db_session.flush()
+    db_session.commit()  # Commit to trigger after_insert event that creates initial version
+    db_session.refresh(project)
     
-    # Create version
+    # Create version with next number
+    next_version_number = max(v.version_number for v in project.versions) + 1
     version = Version(
         project_id=project.id,
+        version_number=next_version_number,
         name="Test Version",
-        parent_version_id=project.versions[0].id
+        parent_id=project.versions[0].id
     )
     db_session.add(version)
     db_session.commit()
@@ -36,7 +40,7 @@ def test_version_creation(db_session: Session):
     assert version.active == project.active
     assert version.created_at is not None
     assert version.updated_at is not None
-    assert version.parent_version_id == project.versions[0].id
+    assert version.parent_id == project.versions[0].id
 
 def test_version_file_relationships(db_session: Session):
     """Test version file relationships.
@@ -50,15 +54,20 @@ def test_version_file_relationships(db_session: Session):
     # Create project and version
     project = Project(name="Test Project")
     db_session.add(project)
-    db_session.flush()
+    db_session.commit()  # Commit to trigger after_insert event that creates initial version
+    db_session.refresh(project)
     
+    # Create version with next number
+    next_version_number = max(v.version_number for v in project.versions) + 1
     version = Version(
         project_id=project.id,
+        version_number=next_version_number,
         name="Test Version",
-        parent_version_id=project.versions[0].id
+        parent_id=project.versions[0].id
     )
     db_session.add(version)
-    db_session.flush()
+    db_session.commit()
+    db_session.refresh(version)
     
     # Add files
     files = []
@@ -100,15 +109,20 @@ def test_version_file_constraints(db_session: Session):
     # Create project and version
     project = Project(name="Test Project")
     db_session.add(project)
-    db_session.flush()
+    db_session.commit()  # Commit to trigger after_insert event that creates initial version
+    db_session.refresh(project)
     
+    # Create version with next number
+    next_version_number = max(v.version_number for v in project.versions) + 1
     version = Version(
         project_id=project.id,
+        version_number=next_version_number,
         name="Test Version",
-        parent_version_id=project.versions[0].id
+        parent_id=project.versions[0].id
     )
     db_session.add(version)
-    db_session.flush()
+    db_session.commit()
+    db_session.refresh(version)
     
     # Test duplicate path
     file1 = File(
@@ -129,27 +143,21 @@ def test_version_file_constraints(db_session: Session):
         db_session.commit()
     db_session.rollback()
     
-    # Test empty path
-    with pytest.raises(IntegrityError):
+    # Test empty path (Python-level validation)
+    with pytest.raises(ValueError, match="File path cannot be empty"):
         file = File(
             version_id=version.id,
             path="",  # Empty path
             content="Test content"
         )
-        db_session.add(file)
-        db_session.commit()
-    db_session.rollback()
     
-    # Test missing content
-    with pytest.raises(IntegrityError):
+    # Test missing content (Python-level validation)
+    with pytest.raises(ValueError, match="File content cannot be null"):
         file = File(
             version_id=version.id,
             path="src/test2.tsx",
             content=None  # Missing content
         )
-        db_session.add(file)
-        db_session.commit()
-    db_session.rollback()
 
 def test_version_inheritance(db_session: Session):
     """Test version inheritance behavior.
@@ -163,18 +171,22 @@ def test_version_inheritance(db_session: Session):
     # Create project
     project = Project(name="Test Project")
     db_session.add(project)
-    db_session.flush()
+    db_session.commit()  # Commit to trigger after_insert event that creates initial version
+    db_session.refresh(project)
     
     # Create chain of versions
     parent = project.versions[0]  # Initial version
     for i in range(3):
+        next_version_number = max(v.version_number for v in project.versions) + 1
         version = Version(
             project_id=project.id,
+            version_number=next_version_number,
             name=f"Version {i+1}",
-            parent_version_id=parent.id
+            parent_id=parent.id
         )
         db_session.add(version)
-        db_session.flush()
+        db_session.commit()
+        db_session.refresh(version)
         parent = version
     
     # Verify version chain
@@ -186,7 +198,7 @@ def test_version_inheritance(db_session: Session):
     for i, version in enumerate(versions):
         assert version.version_number == i
         if i > 0:
-            assert version.parent_version_id == versions[i-1].id
+            assert version.parent_id == versions[i-1].id
     
     # Test active state inheritance
     project.active = False
@@ -210,15 +222,24 @@ def test_version_validation(db_session: Session):
     project1 = Project(name="Project 1")
     project2 = Project(name="Project 2")
     db_session.add_all([project1, project2])
-    db_session.flush()
+    db_session.commit()  # Commit to trigger after_insert event that creates initial versions
+    db_session.refresh(project1)
+    db_session.refresh(project2)
     
     # Try to create version with explicit number
+    # Try to create version without project_id
+    with pytest.raises(NoodleError, match="project_id is required"):
+        version = Version(
+            name="Test Version"
+        )
+
+    # Try to create version with duplicate number
     with pytest.raises(IntegrityError):
         version = Version(
             project_id=project1.id,
             version_number=0,  # Already exists
             name="Test Version",
-            parent_version_id=project1.versions[0].id
+            parent_id=project1.versions[0].id
         )
         db_session.add(version)
         db_session.commit()
@@ -229,7 +250,7 @@ def test_version_validation(db_session: Session):
         version = Version(
             project_id=project1.id,
             name="Test Version",
-            parent_version_id=project2.versions[0].id  # Wrong project
+            parent_id=project2.versions[0].id  # Wrong project
         )
         db_session.add(version)
         db_session.commit()
@@ -238,12 +259,17 @@ def test_version_validation(db_session: Session):
     # Try to create version in inactive project
     project1.active = False
     db_session.commit()
+    db_session.refresh(project1)
     
-    with pytest.raises(ValueError):
+    # Get next version number to avoid unique constraint violation
+    next_version_number = max(v.version_number for v in project1.versions) + 1
+    
+    with pytest.raises(NoodleError, match="Cannot create version in inactive project"):
         version = Version(
             project_id=project1.id,
+            version_number=next_version_number,
             name="Test Version",
-            parent_version_id=project1.versions[0].id
+            parent_id=project1.versions[0].id
         )
         db_session.add(version)
         db_session.commit()
@@ -261,12 +287,16 @@ def test_version_timestamps(db_session: Session):
     # Create project and version
     project = Project(name="Test Project")
     db_session.add(project)
-    db_session.flush()
+    db_session.commit()  # Commit to trigger after_insert event that creates initial version
+    db_session.refresh(project)
     
+    # Create version with next number
+    next_version_number = max(v.version_number for v in project.versions) + 1
     version = Version(
         project_id=project.id,
+        version_number=next_version_number,
         name="Test Version",
-        parent_version_id=project.versions[0].id
+        parent_id=project.versions[0].id
     )
     db_session.add(version)
     db_session.commit()

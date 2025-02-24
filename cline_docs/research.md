@@ -426,7 +426,7 @@ Investigation of test failures in edge case tests revealed critical mocking patt
 Investigation of test failures in edge case tests revealed critical mocking patterns:
 
 1. Problem Analysis
-   - Error: `AttributeError: 'Project' object has no attribute 'parent_version_id'`
+   - Error: `AttributeError: 'Project' object has no attribute 'parent_id'`
    - Error: `AttributeError: 'Version' object has no attribute 'active'`
    - Root cause: Mock returning wrong model types for different queries
    - Parameterized fixture causing type confusion

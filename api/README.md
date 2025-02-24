@@ -49,7 +49,7 @@ Once the server is running, you can access:
   - Versions are ordered by version_number
 - `GET /projects/{project_id}/versions/{version_number}` - Get a specific version
   - Returns full version details including parent_version (the parent's version number)
-  - Maintains parent_version_id for backward compatibility
+  - Maintains parent_id for backward compatibility
 
 ## Database Schema
 
@@ -68,7 +68,7 @@ The service uses three main tables:
    - `id`: UUID (Primary Key)
    - `project_id`: UUID (Foreign Key to projects, CASCADE on delete)
    - `version_number`: Integer (Required, defaults to 0, unique per project)
-   - `parent_version_id`: UUID (Optional, Foreign Key to versions)
+   - `parent_id`: UUID (Optional, Foreign Key to versions)
    - `name`: Text (Required, defaults to empty string)
    - `created_at`: Timestamp with timezone
    - `updated_at`: Timestamp with timezone
@@ -117,12 +117,12 @@ classDiagram
     class Version {
         +UUID project_id
         +int version_number
-        +UUID parent_version_id
+        +UUID parent_id
         +String name
         +Project project
         +List~File~ files
         note for Version "- Initial version (0) created with new project
-        - Parent-child relationship tracked by parent_version_id internally
+        - Parent-child relationship tracked by parent_id internally
         - Parent version number exposed in API responses
         - Version numbers must be unique within a project (DB constraint)
         - Implementation note: Version creation endpoint not implemented"

@@ -4,7 +4,8 @@ import re
 from pathlib import Path
 from typing import List
 from openai import OpenAI
-from ..models.project import FileChange, AIResponse, FileResponse
+from ..schemas.common import FileChange, AIResponse
+from ..schemas.file import FileResponse
 
 def _read_prompt_file(filename: str) -> str:
     """Read prompt content from a file."""

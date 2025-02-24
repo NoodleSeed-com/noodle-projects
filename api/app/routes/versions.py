@@ -51,7 +51,7 @@ async def get_version(
     Returns full version details including:
     - All standard version fields (id, project_id, version_number, name, etc.)
     - parent_version: The version number of the parent version (if any)
-    - parent_version_id: The UUID of the parent version (maintained for compatibility)
+    - parent_id: The UUID of the parent version (maintained for compatibility)
     """
     project = await projects.get(db, project_id)
     if not project:

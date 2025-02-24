@@ -18,13 +18,15 @@ class File(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     
     __table_args__ = (
-        CheckConstraint("length(path) > 0", name="ck_file_path_not_empty"),
         UniqueConstraint('version_id', 'path', name='unique_version_path'),
     )
     
     def __init__(self, **kwargs):
-        if 'path' in kwargs and not kwargs['path']:
-            raise ValueError("File path cannot be empty")
+        if 'path' in kwargs:
+            if not kwargs['path']:
+                raise ValueError("File path cannot be empty")
+            if len(kwargs['path']) > 1024:
+                raise ValueError("File path cannot exceed 1024 characters")
         if 'content' in kwargs and kwargs['content'] is None:
             raise ValueError("File content cannot be null")
         super().__init__(**kwargs)

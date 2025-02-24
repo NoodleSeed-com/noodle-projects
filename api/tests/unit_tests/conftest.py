@@ -17,7 +17,9 @@ from app.config import get_db, settings
 
 from datetime import datetime
 from uuid import uuid4
-from app.models.project import Project, Version, File
+from app.models.project import Project
+from app.models.version import Version
+from app.models.file import File
 
 @pytest.fixture(scope="module")
 def mock_project():
@@ -41,7 +43,7 @@ def mock_version(mock_project):
         project_id=mock_project.id,
         version_number=0,  # This is correct - initial version is 0
         name="Initial Version",
-        parent_version_id=None,
+        parent_id=None,
         created_at=datetime.now(),
         updated_at=datetime.now()
     )
@@ -142,7 +144,7 @@ def test_version():
     return {
         "version_number": 1,
         "name": "Test Version",
-        "parent_version_id": None
+        "parent_id": None
     }
 
 @pytest.fixture

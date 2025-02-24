@@ -75,6 +75,42 @@
    - Resource cleanup
    - State reset
 
+5. SQLAlchemy Session Management:
+   ```python
+   # Create and commit
+   db_session.add(project)
+   db_session.commit()
+   db_session.refresh(project)  # Reload to get generated values
+   
+   # Verify state after commit
+   assert len(project.versions) == 1
+   initial_version = project.versions[0]
+   ```
+
+6. Event Listener Testing:
+   - Use commit() to trigger after_insert events
+   - Refresh objects after commit to load relationships
+   - Verify event results after commit
+   - Example:
+   ```python
+   # Create project triggers version creation
+   project = Project(name="Test")
+   db_session.add(project)
+   db_session.commit()
+   db_session.refresh(project)
+   
+   # Verify event created version
+   assert len(project.versions) == 1
+   assert project.versions[0].version_number == 0
+   ```
+
+7. Common Pitfalls:
+   - Using flush() when commit() is needed for events
+   - Not refreshing after commits
+   - Duplicate version numbers
+   - Missing relationship loads
+   - Not handling unique constraints
+
 ### CRUD Module Organization
 1. Package Structure:
    - Split large CRUD modules (>10,000 bytes) into packages
@@ -218,31 +254,40 @@
 - Regular security audits
 
 ### Error Handling
-1. Status Code Mapping:
-   - 400: Validation errors (ValueError)
-   - 403: Inactive project operations
-   - 404: Resource not found
-   - 409: Integrity constraint violations
-   - 422: Request validation errors
-   - 503: Service unavailable
+1. NoodleError Pattern:
+   - Use NoodleError as the standard application error
+   - All application-level validations should raise NoodleError
+   - Include error type and message in NoodleError
+   - Tests should expect NoodleError for application validations
+   - Only catch external errors (e.g., SQLAlchemy, FastAPI)
 
-2. Service Layer:
-   - Validate inputs before processing
-   - Raise appropriate exceptions
+2. Status Code Mapping:
+   - 400: NoodleError (ErrorType.VALIDATION)
+   - 403: NoodleError (ErrorType.PERMISSION)
+   - 404: NoodleError (ErrorType.NOT_FOUND)
+   - 409: IntegrityError (from SQLAlchemy)
+   - 422: RequestValidationError (from FastAPI)
+   - 503: NoodleError (ErrorType.DATABASE)
+
+3. Service Layer:
+   - Validate inputs using NoodleError
+   - Convert external errors to NoodleError when appropriate
    - Maintain consistent error messages
    - Document error conditions
+   - Use appropriate ErrorType
 
-3. Error Propagation:
+4. Error Propagation:
    - Catch errors at appropriate layer
    - Convert to HTTP status codes
    - Maintain transaction integrity
    - Roll back on failure
 
-4. Testing Requirements:
+5. Testing Requirements:
    - Test all error paths
+   - Use pytest.raises(NoodleError) for application validations
+   - Check error types and messages
    - Verify error propagation
-   - Check transaction rollback
-   - Validate error responses
+   - Test external error handling
    - Mock service errors
 
 ## CLI Commands

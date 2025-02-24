@@ -23,7 +23,7 @@ CREATE TABLE versions (
     id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
     project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     version_number integer NOT NULL DEFAULT 0,
-    parent_id uuid REFERENCES versions(id),  -- Renamed from parent_version_id
+    parent_id uuid REFERENCES versions(id),  -- Renamed from parent_id
     name text NOT NULL DEFAULT '',
     created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
