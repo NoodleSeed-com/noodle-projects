@@ -2,8 +2,8 @@ import os
 from typing import Optional, List
 from uuid import UUID
 from sqlalchemy import select, update
-from sqlalchemy.orm import Session
-from sqlalchemy.orm import joinedload
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session, joinedload
 from .models.project import (
     Project,
     ProjectVersion,
@@ -21,15 +21,15 @@ class ProjectCRUD:
     """CRUD operations for projects"""
     
     @staticmethod
-    def get(db: Session, project_id: UUID) -> Optional[Project]:
+    async def get(db: AsyncSession, project_id: UUID) -> Optional[Project]:
         """Get a project by ID"""
-        result = db.execute(select(Project).filter(Project.id == project_id))
+        result = await db.execute(select(Project).filter(Project.id == project_id))
         return result.scalar_one_or_none()
 
     @staticmethod
-    def get_multi(db: Session, skip: int = 0, limit: int = 100) -> List[Project]:
+    async def get_multi(db: AsyncSession, skip: int = 0, limit: int = 100) -> List[Project]:
         """Get a list of active projects"""
-        result = db.execute(
+        result = await db.execute(
             select(Project)
             .filter(Project.active == True)
             .offset(skip)
@@ -38,15 +38,15 @@ class ProjectCRUD:
         return result.scalars().all()
 
     @staticmethod
-    def create(db: Session, project: ProjectCreate) -> Project:
+    async def create(db: AsyncSession, project: ProjectCreate) -> Project:
         """Create a new project"""
         db_project = Project(
             name=project.name,
             description=project.description
         )
         db.add(db_project)
-        db.commit()
-        db.refresh(db_project)
+        await db.commit()
+        await db.refresh(db_project)
 
         # Create initial version with template files
         db_version = ProjectVersion(
@@ -55,8 +55,8 @@ class ProjectCRUD:
             name="Initial Version"
         )
         db.add(db_version)
-        db.commit()
-        db.refresh(db_version)
+        await db.commit()
+        await db.refresh(db_version)
 
         # Read and add template files
         template_dir = os.path.join(os.path.dirname(__file__), '..', 'templates', 'version-0')
@@ -75,41 +75,42 @@ class ProjectCRUD:
                 )
                 db.add(db_file)
         
-        db.commit()
+        await db.commit()
         return db_project
 
     @staticmethod
-    def update(db: Session, project_id: UUID, project: ProjectUpdate) -> Optional[Project]:
+    async def update(db: AsyncSession, project_id: UUID, project: ProjectUpdate) -> Optional[Project]:
         """Update a project"""
         update_data = project.model_dump(exclude_unset=True)
         if not update_data:
             return None
             
         stmt = update(Project).where(Project.id == project_id).values(**update_data).returning(Project)
-        result = db.execute(stmt)
-        db.commit()
+        result = await db.execute(stmt)
+        await db.commit()
         return result.scalar_one_or_none()
 
     @staticmethod
-    def delete(db: Session, project_id: UUID) -> Optional[Project]:
+    async def delete(db: AsyncSession, project_id: UUID) -> Optional[Project]:
         """Soft delete a project by setting active=False"""
         stmt = update(Project).where(Project.id == project_id).values(active=False).returning(Project)
-        result = db.execute(stmt)
-        db.commit()
+        result = await db.execute(stmt)
+        await db.commit()
         return result.scalar_one_or_none()
 
     @staticmethod
-    def get_version(db: Session, project_id: UUID, version_number: int) -> Optional[ProjectVersionResponse]:
+    async def get_version(db: AsyncSession, project_id: UUID, version_number: int) -> Optional[ProjectVersionResponse]:
         """Get a specific version of a project including its files"""
         # Get the version with files eagerly loaded
-        version = db.execute(
+        result = await db.execute(
             select(ProjectVersion)
             .options(joinedload(ProjectVersion.files))  # Eager load files
             .filter(
                 ProjectVersion.project_id == project_id,
                 ProjectVersion.version_number == version_number
             )
-        ).unique().scalar_one_or_none()
+        )
+        version = result.unique().scalar_one_or_none()
         
         if not version:
             return None
@@ -117,10 +118,11 @@ class ProjectCRUD:
         # Get parent version number if it exists
         parent_version = None
         if version.parent_version_id:
-            parent_version = db.execute(
+            result = await db.execute(
                 select(ProjectVersion.version_number)
                 .filter(ProjectVersion.id == version.parent_version_id)
-            ).scalar_one_or_none()
+            )
+            parent_version = result.scalar_one_or_none()
 
         # Convert files to FileResponse objects
         file_responses = [
@@ -132,10 +134,11 @@ class ProjectCRUD:
         ]
         
         # Get project's active state
-        project_active = db.execute(
+        result = await db.execute(
             select(Project.active)
             .filter(Project.id == version.project_id)
-        ).scalar_one()
+        )
+        project_active = result.scalar_one()
 
         # Create and return a ProjectVersionResponse
         return ProjectVersionResponse(
@@ -152,34 +155,36 @@ class ProjectCRUD:
         )
 
     @staticmethod
-    def get_versions(db: Session, project_id: UUID, skip: int = 0, limit: int = 100) -> List[ProjectVersionListItem]:
+    async def get_versions(db: AsyncSession, project_id: UUID, skip: int = 0, limit: int = 100) -> List[ProjectVersionListItem]:
         """Get all versions of a project.
         
         Only returns versions if the project is active.
         """
         # First check if project is active
-        project_active = db.execute(
+        result = await db.execute(
             select(Project.active)
             .filter(Project.id == project_id)
-        ).scalar_one()
+        )
+        project_active = result.scalar_one()
         
         # Return empty list if project is inactive
         if not project_active:
             return []
         
-        result = db.execute(
+        result = await db.execute(
             select(ProjectVersion.id, ProjectVersion.version_number, ProjectVersion.name)
             .filter(ProjectVersion.project_id == project_id)
             .order_by(ProjectVersion.version_number)
             .offset(skip)
             .limit(limit)
         )
+        rows = result.all()
         return [ProjectVersionListItem(id=id, version_number=number, name=name) 
-                for id, number, name in result]
-
+                for id, number, name in rows]
+    
     @staticmethod
-    def create_version(
-        db: Session,
+    async def create_version(
+        db: AsyncSession,
         project_id: UUID,
         parent_version_number: int,
         name: str,
@@ -223,9 +228,9 @@ class ProjectCRUD:
                 raise ValueError(f"Cannot create file that already exists: {change.path}")
 
         try:
-            with db.begin():
+            async with db.begin():
                 # Get parent version with its files and lock the row
-                parent_version = db.execute(
+                parent_version = await db.execute(
                     select(ProjectVersion)
                     .options(joinedload(ProjectVersion.files))
                     .filter(
@@ -233,18 +238,20 @@ class ProjectCRUD:
                         ProjectVersion.version_number == parent_version_number
                     )
                     .with_for_update()  # Lock the row
-                ).unique().scalar_one_or_none()
+                )
+                parent_version = parent_version.unique().scalar_one_or_none()
                 
                 if not parent_version:
                     return None
                 
                 # Get the latest version number for this project
-                latest_version = db.execute(
+                latest_version = await db.execute(
                     select(ProjectVersion.version_number)
                     .filter(ProjectVersion.project_id == project_id)
                     .order_by(ProjectVersion.version_number.desc())
                     .with_for_update()  # Lock to prevent concurrent updates
-                ).scalar_one_or_none()
+                )
+                latest_version = latest_version.scalar_one_or_none()
                 
                 new_version_number = (latest_version or -1) + 1
                 
@@ -256,7 +263,7 @@ class ProjectCRUD:
                     name=name
                 )
                 db.add(new_version)
-                db.flush()  # Get new_version.id without committing
+                await db.flush()  # Get new_version.id without committing
                 
                 # Create a map of existing files by path
                 existing_files = {file.path: file for file in parent_version.files}
@@ -306,11 +313,11 @@ class ProjectCRUD:
                 # Set the files relationship and commit
                 new_version.files = files_to_add
                 db.add(new_version)
-                db.flush()  # Use flush instead of commit to keep transaction open
-                db.refresh(new_version)
+                await db.flush()  # Use flush instead of commit to keep transaction open
+                await db.refresh(new_version)
                 
                 # Get version response within same transaction
-                response = ProjectCRUD.get_version(db, project_id, new_version.version_number)
+                response = await ProjectCRUD.get_version(db, project_id, new_version.version_number)
                 
                 # Let the context manager handle commit/rollback
                 return response

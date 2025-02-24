@@ -35,17 +35,20 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # Create engine based on test mode
-engine = create_engine(
-    str(settings.DATABASE_URL).replace("+asyncpg", ""),
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+
+engine = create_async_engine(
+    str(settings.DATABASE_URL),
     echo=settings.DEBUG
 )
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+AsyncSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession, expire_on_commit=False)
 
 
-def get_db() -> Generator[Session, None, None]:
+async def get_db():
     """Dependency for getting database sessions."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()

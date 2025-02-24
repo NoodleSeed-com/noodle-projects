@@ -2,9 +2,9 @@ import os
 import pytest
 from pathlib import Path
 from dotenv import load_dotenv
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
+import asyncio
 
 # Load environment variables before importing app modules
 env_path = Path(__file__).parent / "test.env"
@@ -15,30 +15,52 @@ from app.main import app
 from app.config import get_db, settings
 from app.models.base import Base
 
+@pytest.fixture(scope="function")
+def event_loop():
+    """Create an instance of the default event loop for each test case."""
+    policy = asyncio.get_event_loop_policy()
+    loop = policy.new_event_loop()
+    asyncio.set_event_loop(loop)
+    yield loop
+    loop.close()
+    asyncio.set_event_loop(None)
+
 @pytest.fixture(scope="session")
-def test_engine():
-    db_url = str(settings.DATABASE_URL).replace("+asyncpg", "")  # Make sure it is sync
-    engine = create_engine(db_url, echo=True)
-    return engine
+async def test_engine():
+    engine = create_async_engine(str(settings.DATABASE_URL), echo=True)
+    yield engine
+    await engine.dispose()
 
-@pytest.fixture(scope="module")
-def test_db(test_engine):
-    Base.metadata.drop_all(bind=test_engine)
-    Base.metadata.create_all(bind=test_engine)
-    TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=test_engine)
-    db = TestingSessionLocal()
-    yield db
-    db.close()
-    Base.metadata.drop_all(bind=test_engine)
+@pytest.fixture(scope="function")
+async def test_db(test_engine):
+    # Create tables
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+        await conn.run_sync(Base.metadata.create_all)
+    
+    # Create session
+    TestingSessionLocal = async_sessionmaker(
+        bind=test_engine,
+        class_=AsyncSession,
+        expire_on_commit=False,
+    )
+    
+    async with TestingSessionLocal() as session:
+        yield session
+        await session.rollback()
+    
+    # Clean up
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
 
-@pytest.fixture(scope="module")
-def client(test_db):
-    def override_get_db():
-        return test_db
+@pytest.fixture
+async def client(test_db):
+    async def override_get_db():
+        yield test_db
 
     app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as c:
-        yield c
+    async with AsyncClient(app=app, base_url="http://test") as ac:
+        yield ac
     app.dependency_overrides.clear()
 
 @pytest.fixture

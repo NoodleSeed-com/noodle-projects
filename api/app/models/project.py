@@ -21,21 +21,6 @@ class Project(Base):
     
     name: Mapped[str] = mapped_column(String, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    @hybrid_property
-    def latest_version_number(self) -> int:
-        if self.versions:
-            return max((version.version_number for version in self.versions), default=0)
-        return 0
-
-    @latest_version_number.expression
-    def latest_version_number(cls):
-        from .project import ProjectVersion
-        return (
-            select(func.max(ProjectVersion.version_number))
-            .where(ProjectVersion.project_id == cls.id)
-            .correlate(cls)
-            .scalar_subquery()
-        )
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -49,11 +34,17 @@ class Project(Base):
         onupdate=func.now()
     )
     
-    # Relationships
+    # Relationships with explicit loading strategy
     versions: Mapped[List["ProjectVersion"]] = relationship(
         back_populates="project",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
+        lazy="selectin"  # Use selectin loading to avoid async issues
     )
+
+    @property
+    def latest_version_number(self) -> int:
+        """Get the latest version number from loaded versions."""
+        return max((v.version_number for v in self.versions), default=0)
 
 class ProjectVersion(Base):
     """SQLAlchemy model for project versions."""

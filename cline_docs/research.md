@@ -160,6 +160,30 @@ Research findings from Gemini 2.0 Flash testing:
    - Parse JSON safely
    - Provide clear error messages
 
+## Transaction Management Issues
+
+### Concurrent State Changes
+Investigation of test failure in `test_concurrent_state_changes`:
+
+1. Error Analysis
+   ```
+   sqlalchemy.exc.IllegalStateChangeError: Method 'commit()' can't be called here; method 'commit()' is already in progress
+   ```
+   - Multiple transactions attempting to commit simultaneously
+   - SQLAlchemy state management conflict
+   - Potential race condition in concurrent operations
+
+2. Root Cause
+   - Concurrent state updates not properly synchronized
+   - Transaction boundaries not clearly defined
+   - Possible nested transaction issue
+
+3. Recommended Solutions
+   - Implement proper transaction isolation
+   - Use SQLAlchemy session management best practices
+   - Add explicit transaction boundaries
+   - Consider using savepoints for nested operations
+
 ## Future Research Topics
 
 1. Batch Operations
@@ -336,3 +360,53 @@ Research findings from test refactoring:
    - Start with low concurrency
    - Verify transaction completion
    - Include proper state checks
+
+## SQLAlchemy Async Testing Patterns (2024-02-23)
+
+### Event Loop Management Issues
+Investigation of test failures revealed critical async testing patterns:
+
+1. Event Loop Conflicts
+   - Different requirements for asyncio vs trio
+   - Loop sharing between tests causing issues
+   - Need for proper cleanup between tests
+   - Error: "Task got Future attached to a different loop"
+
+2. Transaction Management Challenges
+   - Concurrent operation conflicts with asyncpg
+   - Error: "cannot perform operation: another operation is in progress"
+   - Need for proper transaction isolation
+   - Connection state management critical
+
+3. Model Access Patterns
+   - Hybrid properties causing async issues
+   - Relationship loading strategy impacts
+   - Success with eager loading via selectin
+   - Property calculation from loaded data
+
+4. Recommended Solutions
+   - Use selectin loading for relationships
+   - Calculate properties from loaded data
+   - Proper transaction isolation
+   - Clear connection state between tests
+
+Example Implementation:
+```python
+class Project(Base):
+    versions = relationship(
+        "Version",
+        lazy="selectin",  # Eager loading
+        cascade="all, delete-orphan"
+    )
+
+    @property
+    def latest_version_number(self) -> int:
+        """Calculate from loaded versions."""
+        return max((v.version_number for v in self.versions), default=0)
+```
+
+Key Findings:
+- Avoid async operations in property getters
+- Use eager loading for related data
+- Maintain clear transaction boundaries
+- Handle connection cleanup properly

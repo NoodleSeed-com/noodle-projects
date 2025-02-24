@@ -1,6 +1,6 @@
 import os
 import pytest
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.crud import projects
 from app.models.project import ProjectCreate
 
@@ -31,16 +31,17 @@ def get_template_files():
     
     return files
 
-def test_version_0_creation(test_db: Session):
+@pytest.mark.anyio
+async def test_version_0_creation(test_db: AsyncSession):
     """Test that version 0 is created with all template files."""
     # Create a test project
-    project = projects.create(test_db, ProjectCreate(
+    project = await projects.create(test_db, ProjectCreate(
         name="Test Project",
         description="Test Description"
     ))
     
     # Get version 0
-    version_0 = projects.get_version(test_db, project.id, 0)
+    version_0 = await projects.get_version(test_db, project.id, 0)
     assert version_0 is not None
     assert version_0.version_number == 0
     assert version_0.name == "Initial Version"
@@ -61,16 +62,17 @@ def test_version_0_creation(test_db: Session):
     for path, content in expected_files_dict.items():
         assert actual_files[path] == content, f"Content mismatch for {path}"
 
-def test_version_0_file_structure(test_db: Session):
+@pytest.mark.anyio
+async def test_version_0_file_structure(test_db: AsyncSession):
     """Test that version 0 has the correct file structure."""
     # Create a test project
-    project = projects.create(test_db, ProjectCreate(
+    project = await projects.create(test_db, ProjectCreate(
         name="Test Project",
         description="Test Description"
     ))
     
     # Get version 0
-    version_0 = projects.get_version(test_db, project.id, 0)
+    version_0 = await projects.get_version(test_db, project.id, 0)
     assert version_0 is not None
     
     # Get expected paths from template directory
@@ -82,16 +84,17 @@ def test_version_0_file_structure(test_db: Session):
     # Compare paths
     assert actual_paths == expected_paths, "File structure does not match template directory"
 
-def test_version_0_file_contents_match_templates(test_db: Session):
+@pytest.mark.anyio
+async def test_version_0_file_contents_match_templates(test_db: AsyncSession):
     """Test that all file contents exactly match the templates."""
     # Create a test project
-    project = projects.create(test_db, ProjectCreate(
+    project = await projects.create(test_db, ProjectCreate(
         name="Test Project",
         description="Test Description"
     ))
     
     # Get version 0
-    version_0 = projects.get_version(test_db, project.id, 0)
+    version_0 = await projects.get_version(test_db, project.id, 0)
     assert version_0 is not None
     
     # Get template files

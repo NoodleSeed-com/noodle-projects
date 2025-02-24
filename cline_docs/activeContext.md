@@ -1,7 +1,45 @@
 # Active Context
 
 ## Current State
-The project is in a stable state with all tests passing. Recent changes have focused on improving the handling of inactive projects and their versions.
+Currently addressing test failures with a focus on transaction management issues in concurrent operations.
+
+## Test Failures (In Priority Order)
+1. Event Loop Management (Current Focus)
+   - test_create_project_with_version_0[trio]: RuntimeError with event loop
+   - Error: "Task got Future attached to a different loop"
+   - Root cause: Event loop sharing between tests
+   - Solution in progress: Proper event loop configuration and cleanup
+
+2. Transaction Management
+   - test_health_check and test_cors_middleware: InterfaceError with asyncpg
+   - Error: "cannot perform operation: another operation is in progress"
+   - Root cause: Concurrent operation conflicts
+   - Solution: Need proper transaction isolation and connection state management
+
+3. Model Access Pattern
+   - Resolved: test_create_project_with_version_0[asyncio]
+   - Solution implemented:
+     * Removed duplicate relationship definition
+     * Using selectin loading strategy
+     * Converted hybrid_property to regular property
+     * Calculating latest_version_number from loaded data
+
+2. Response Validation (Future Tasks)
+   - test_concurrent_version_creation
+   - test_version_creation_constraints
+   - test_file_operation_constraints
+   - test_partial_version_creation_rollback
+   - test_concurrent_connection_pool_exhaustion
+   - test_concurrent_version_state_race
+   - test_idempotent_version_creation
+   - test_file_operation_compensation
+   - test_inactive_project_operations
+   - test_inactive_project_version_operations
+   Issue: Missing required fields (id, active, created_at, updated_at)
+
+3. Implementation Error
+   - test_create_version_with_changes
+   - Issue: NameError (test_db not defined)
 
 ## Active Decisions
 

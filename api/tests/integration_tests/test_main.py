@@ -4,7 +4,10 @@ Tests for main application module.
 from app.main import settings
 from .test_versions import get_template_files
 
-def test_create_project_with_version_0(client):
+import pytest
+
+@pytest.mark.anyio
+async def test_create_project_with_version_0(client):
     """
     Critical integration test that verifies the core project creation flow:
     1. Create a new project via API
@@ -15,7 +18,7 @@ def test_create_project_with_version_0(client):
         "name": "Test Project",
         "description": "Test Description"
     }
-    response = client.post(f"{settings.API_PREFIX}/projects/", json=project_data)
+    response = await client.post(f"{settings.API_PREFIX}/projects/", json=project_data)
     assert response.status_code == 201
     project = response.json()
     assert project["name"] == project_data["name"]
@@ -23,7 +26,7 @@ def test_create_project_with_version_0(client):
     
     # Get version 0 through the API
     project_id = project["id"]
-    response = client.get(f"{settings.API_PREFIX}/projects/{project_id}/versions/0")
+    response = await client.get(f"{settings.API_PREFIX}/projects/{project_id}/versions/0")
     assert response.status_code == 200
     version_0 = response.json()
     
@@ -48,17 +51,19 @@ def test_create_project_with_version_0(client):
     for path, content in expected_files.items():
         assert actual_files[path] == content, f"Content mismatch for {path}"
 
-def test_health_check(client):
+@pytest.mark.anyio
+async def test_health_check(client):
     """Test health check endpoint."""
-    response = client.get("/health")
+    response = await client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "healthy"}
 
-def test_cors_middleware(client):
+@pytest.mark.anyio
+async def test_cors_middleware(client):
     """Test CORS middleware configuration."""
     # Test with allowed origin
     origin = "http://localhost"
-    response = client.options(
+    response = await client.options(
         "/health",
         headers={
             "Origin": origin,

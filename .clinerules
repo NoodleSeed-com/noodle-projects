@@ -119,12 +119,11 @@
   - No file versioning (files are immutable per version)
 
 ### Documentation
-- Maintain Memory Bank in cline_docs/
 - Document all schema changes
 - Keep API documentation up to date
 - Document design decisions
 
-#### Response Patterns
+### Response Patterns
 - Use Pydantic models for all responses
 - Keep SQLAlchemy models separate from response DTOs
 - Include complete object graphs in detailed responses
