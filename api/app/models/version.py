@@ -50,15 +50,17 @@ class Version(Base):
         if kwargs['version_number'] < 0:
             raise NoodleError("Version number cannot be negative")
             
+        # Get session for validation
+        session = kwargs.pop('session', None)
+            
         # Store project_id for validation
         self.project_id = kwargs['project_id']
             
         # Initialize to set up relationships
         super().__init__(**kwargs)
 
-        # Get session and validate project is active
-        session = object_session(self)
-        if session:
+        # Validate if we have a session
+        if session or (session := object_session(self)):
             self.validate(session)
 
     def validate(self, session):
@@ -66,6 +68,15 @@ class Version(Base):
         project = session.get(Project, self.project_id)
         if not project or not project.active:
             raise NoodleError("Cannot create version in inactive project")
+            
+        # Validate parent version is from same project
+        if self.parent_id:
+            parent = session.get(Version, self.parent_id)
+            if parent and parent.project_id != self.project_id:
+                raise NoodleError(
+                    "Parent version must be from the same project",
+                    error_type=ErrorType.VALIDATION
+                )
 
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="versions")
