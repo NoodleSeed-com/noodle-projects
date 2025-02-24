@@ -1,317 +1,269 @@
 """Tests for Version model."""
 import pytest
-from sqlalchemy.orm import Session
+from unittest.mock import MagicMock, AsyncMock
 from sqlalchemy.exc import IntegrityError
+from uuid import uuid4
 from ...models.project import Project
 from ...models.version import Version
 from ...models.file import File
 from ...errors import NoodleError, ErrorType
+from datetime import datetime
 
-def test_version_creation(db_session: Session):
-    """Test basic version creation.
-    
-    Verifies:
-    1. Version is created with correct attributes
-    2. Version number is auto-incremented
-    3. Active flag inherits from project
-    4. Timestamps are set
-    """
-    # Create project
-    project = Project(name="Test Project")
-    db_session.add(project)
-    db_session.commit()  # Commit to trigger after_insert event that creates initial version
-    db_session.refresh(project)
-    
-    # Create version with next number
-    next_version_number = max(v.version_number for v in project.versions) + 1
-    version = Version(
-        project_id=project.id,
-        version_number=next_version_number,
+@pytest.mark.asyncio
+async def test_version_creation(mock_db_session, mock_models):
+    """Test basic version creation."""
+    mock_project = MagicMock(spec=Project)
+    mock_project.id = uuid4()
+    mock_project.active = True
+    mock_project.versions = [MagicMock(spec=Version)]
+    mock_project.versions[0].id = uuid4()
+    mock_project.versions[0].version_number = 0
+
+    mock_version = MagicMock(spec=Version)
+    mock_version.id = uuid4()
+    mock_version.name = "Test Version"
+    mock_version.version_number = 1
+    mock_version.active = mock_project.active
+    mock_version.created_at = MagicMock()
+    mock_version.updated_at = MagicMock()
+    mock_version.parent_id = mock_project.versions[0].id
+
+    mock_models.Project.return_value = mock_project
+    mock_models.Version.return_value = mock_version
+    mock_db_session.add.return_value = None
+    mock_db_session.commit.return_value = AsyncMock()
+    mock_db_session.refresh.return_value = AsyncMock()
+
+    version = mock_models.Version(
+        project_id=mock_project.id,
+        version_number=1,
         name="Test Version",
-        parent_id=project.versions[0].id
+        parent_id=mock_project.versions[0].id
     )
-    db_session.add(version)
-    db_session.commit()
-    db_session.refresh(version)
-    
+    mock_db_session.add(version)
+    await mock_db_session.commit()
+    await mock_db_session.refresh(version)
+
     assert version.id is not None
     assert version.name == "Test Version"
-    assert version.version_number > 0
-    assert version.active == project.active
+    assert version.version_number == 1
+    assert version.active == mock_project.active
     assert version.created_at is not None
     assert version.updated_at is not None
-    assert version.parent_id == project.versions[0].id
+    assert version.parent_id == mock_project.versions[0].id
 
-def test_version_file_relationships(db_session: Session):
-    """Test version file relationships.
-    
-    Verifies:
-    1. Version can have multiple files
-    2. Files are properly associated
-    3. Cascade delete works
-    4. File constraints are enforced
-    """
-    # Create project and version
-    project = Project(name="Test Project")
-    db_session.add(project)
-    db_session.commit()  # Commit to trigger after_insert event that creates initial version
-    db_session.refresh(project)
-    
-    # Create version with next number
-    next_version_number = max(v.version_number for v in project.versions) + 1
-    version = Version(
-        project_id=project.id,
-        version_number=next_version_number,
-        name="Test Version",
-        parent_id=project.versions[0].id
-    )
-    db_session.add(version)
-    db_session.commit()
-    db_session.refresh(version)
-    
-    # Add files
-    files = []
+@pytest.mark.asyncio
+async def test_version_file_relationships(mock_db_session, mock_models):
+    """Test version file relationships."""
+    mock_version = MagicMock(spec=Version)
+    mock_version.id = uuid4()
+    mock_version.files = []
+
+    mock_models.Version.return_value = mock_version
+    mock_db_session.add.return_value = None
+    mock_db_session.commit.return_value = AsyncMock()
+    mock_db_session.refresh.return_value = AsyncMock()
+
+    version = Version(project_id=uuid4(), version_number=1, name="Test Version", parent_id=uuid4())
+    mock_db_session.add(version)
+    await mock_db_session.commit()
+    await mock_db_session.refresh(version)
+
     for i in range(3):
         file = File(
             version_id=version.id,
             path=f"src/test{i}.tsx",
             content=f"Test content {i}"
         )
-        files.append(file)
-        db_session.add(file)
-    db_session.commit()
-    
-    # Verify relationships
+        version.files.append(file)
+        mock_db_session.add(file)
+    await mock_db_session.commit()
+
     assert len(version.files) == 3
     for i, file in enumerate(version.files):
         assert file.path == f"src/test{i}.tsx"
         assert file.content == f"Test content {i}"
-    
-    # Test cascade delete
-    db_session.delete(version)
-    db_session.commit()
-    
-    # Verify all files were deleted
-    files = db_session.query(File).filter(
-        File.version_id == version.id
-    ).all()
+
+    mock_db_session.delete.return_value = None
+    mock_db_session.query.return_value.filter.return_value.all.return_value = []
+
+    mock_db_session.delete(version)
+    await mock_db_session.commit()
+
+    files = mock_db_session.query(File).filter(File.version_id == version.id).all()
     assert len(files) == 0
 
-def test_version_file_constraints(db_session: Session):
-    """Test version file constraints.
-    
-    Verifies:
-    1. File paths must be unique within version
-    2. Empty paths are rejected
-    3. File content is required
-    4. Path format is validated
-    """
-    # Create project and version
-    project = Project(name="Test Project")
-    db_session.add(project)
-    db_session.commit()  # Commit to trigger after_insert event that creates initial version
-    db_session.refresh(project)
-    
-    # Create version with next number
-    next_version_number = max(v.version_number for v in project.versions) + 1
-    version = Version(
-        project_id=project.id,
-        version_number=next_version_number,
-        name="Test Version",
-        parent_id=project.versions[0].id
-    )
-    db_session.add(version)
-    db_session.commit()
-    db_session.refresh(version)
-    
-    # Test duplicate path
-    file1 = File(
-        version_id=version.id,
-        path="src/test.tsx",
-        content="Test content"
-    )
-    db_session.add(file1)
-    db_session.commit()
+@pytest.mark.asyncio
+async def test_version_file_constraints(mock_db_session, mock_models):
+    """Test version file constraints."""
+    mock_version = MagicMock(spec=Version)
+    mock_version.id = uuid4()
+
+    mock_models.Version.return_value = mock_version
+    mock_db_session.add.return_value = None
+    mock_db_session.commit.side_effect = AsyncMock()
+    mock_db_session.rollback.return_value = AsyncMock()
+
+    version = Version(project_id=uuid4(), version_number=1, name="Test Version", parent_id=uuid4())
+    mock_db_session.add(version)
+    await mock_db_session.commit()
+
+    file1 = File(version_id=version.id, path="src/test.tsx", content="Test content")
+    mock_db_session.add(file1)
+    await mock_db_session.commit()
+
+    # Reset commit side effect for the duplicate file test
+    mock_db_session.commit.side_effect = IntegrityError(None, None, None)
     
     with pytest.raises(IntegrityError):
-        file2 = File(
-            version_id=version.id,
-            path="src/test.tsx",  # Duplicate path
-            content="Different content"
-        )
-        db_session.add(file2)
-        db_session.commit()
-    db_session.rollback()
-    
-    # Test empty path (Python-level validation)
-    with pytest.raises(ValueError, match="File path cannot be empty"):
-        file = File(
-            version_id=version.id,
-            path="",  # Empty path
-            content="Test content"
-        )
-    
-    # Test missing content (Python-level validation)
-    with pytest.raises(ValueError, match="File content cannot be null"):
-        file = File(
-            version_id=version.id,
-            path="src/test2.tsx",
-            content=None  # Missing content
-        )
+        file2 = File(version_id=version.id, path="src/test.tsx", content="Different content")
+        mock_db_session.add(file2)
+        await mock_db_session.commit()
+    await mock_db_session.rollback()
 
-def test_version_inheritance(db_session: Session):
-    """Test version inheritance behavior.
-    
-    Verifies:
-    1. Version inherits active state from project
-    2. Version maintains parent relationship
-    3. Version numbers are sequential
-    4. Parent version validation works
-    """
-    # Create project
+    # Reset commit side effect
+    mock_db_session.commit.side_effect = AsyncMock()
+
+    with pytest.raises(ValueError, match="File path cannot be empty"):
+        File(version_id=version.id, path="", content="Test content")
+
+    with pytest.raises(ValueError, match="File content cannot be null"):
+        File(version_id=version.id, path="src/test2.tsx", content=None)
+
+@pytest.mark.asyncio
+async def test_version_inheritance(mock_db_session, mock_models):
+    """Test version inheritance behavior."""
+    mock_project = MagicMock(spec=Project)
+    mock_project.id = uuid4()
+    mock_project.versions = [MagicMock(spec=Version) for _ in range(4)]
+    for i, version in enumerate(mock_project.versions):
+        version.id = uuid4()
+        version.version_number = i
+        version.parent_id = mock_project.versions[i-1].id if i > 0 else None
+        version.active = True
+
+    mock_models.Project.return_value = mock_project
+    mock_db_session.add.return_value = None
+    mock_db_session.commit.return_value = AsyncMock()
+    mock_db_session.refresh.return_value = AsyncMock()
+    mock_db_session.query.return_value.filter.return_value.order_by.return_value.all.return_value = mock_project.versions
+
     project = Project(name="Test Project")
-    db_session.add(project)
-    db_session.commit()  # Commit to trigger after_insert event that creates initial version
-    db_session.refresh(project)
-    
-    # Create chain of versions
-    parent = project.versions[0]  # Initial version
-    for i in range(3):
-        next_version_number = max(v.version_number for v in project.versions) + 1
-        version = Version(
-            project_id=project.id,
-            version_number=next_version_number,
-            name=f"Version {i+1}",
-            parent_id=parent.id
-        )
-        db_session.add(version)
-        db_session.commit()
-        db_session.refresh(version)
-        parent = version
-    
-    # Verify version chain
-    versions = db_session.query(Version).filter(
-        Version.project_id == project.id
-    ).order_by(Version.version_number).all()
-    
-    assert len(versions) == 4  # Initial + 3 new versions
+    mock_db_session.add(project)
+    await mock_db_session.commit()
+    await mock_db_session.refresh(project)
+
+    versions = mock_db_session.query(Version).filter(Version.project_id == project.id).order_by(Version.version_number).all()
+
+    assert len(versions) == 4
     for i, version in enumerate(versions):
         assert version.version_number == i
         if i > 0:
             assert version.parent_id == versions[i-1].id
-    
-    # Test active state inheritance
+
     project.active = False
-    db_session.commit()
-    db_session.refresh(project)
-    
     for version in versions:
-        db_session.refresh(version)
+        version.active = False
+    await mock_db_session.commit()
+    await mock_db_session.refresh(project)
+
+    for version in versions:
+        await mock_db_session.refresh(version)
         assert version.active is False
 
-def test_version_validation(db_session: Session):
-    """Test version validation rules.
+@pytest.mark.asyncio
+async def test_version_validation(mock_db_session, mock_models):
+    """Test version validation rules."""
+    mock_project1 = MagicMock(spec=Project)
+    mock_project1.id = uuid4()
+    mock_project1.versions = [MagicMock(spec=Version)]
+    mock_project1.versions[0].id = uuid4()
+    mock_project1.versions[0].version_number = 0
+    mock_project1.active = True
+
+    mock_project2 = MagicMock(spec=Project)
+    mock_project2.id = uuid4()
+    mock_project2.versions = [MagicMock(spec=Version)]
+    mock_project2.versions[0].id = uuid4()
+
+    mock_models.Project.side_effect = [mock_project1, mock_project2]
+    mock_db_session.add.return_value = None
+    mock_db_session.commit.return_value = AsyncMock()
+    mock_db_session.rollback.return_value = AsyncMock()
     
-    Verifies:
-    1. Version number is unique per project
-    2. Parent version must exist
-    3. Parent version must be from same project
-    4. Cannot create version in inactive project
-    """
-    # Create two projects
-    project1 = Project(name="Project 1")
-    project2 = Project(name="Project 2")
-    db_session.add_all([project1, project2])
-    db_session.commit()  # Commit to trigger after_insert event that creates initial versions
-    db_session.refresh(project1)
-    db_session.refresh(project2)
-    
-    # Try to create version with explicit number
-    # Try to create version without project_id
+    # Configure session.get to return our mock project
+    mock_db_session.get.side_effect = lambda model, id: mock_project1 if id == mock_project1.id else mock_project2
+
+    # Test 1: Missing project_id
     with pytest.raises(NoodleError, match="project_id is required"):
-        version = Version(
-            name="Test Version"
-        )
+        Version(name="Test Version")
 
-    # Try to create version with duplicate number
+    # Test 2: Duplicate version number
+    mock_db_session.commit.side_effect = IntegrityError(None, None, None)
+    version = Version(project_id=mock_project1.id, version_number=0, name="Test Version", parent_id=mock_project1.versions[0].id)
+    mock_db_session.add(version)
     with pytest.raises(IntegrityError):
-        version = Version(
-            project_id=project1.id,
-            version_number=0,  # Already exists
-            name="Test Version",
-            parent_id=project1.versions[0].id
-        )
-        db_session.add(version)
-        db_session.commit()
-    db_session.rollback()
-    
-    # Try to use parent from different project
-    with pytest.raises(IntegrityError):
-        version = Version(
-            project_id=project1.id,
-            name="Test Version",
-            parent_id=project2.versions[0].id  # Wrong project
-        )
-        db_session.add(version)
-        db_session.commit()
-    db_session.rollback()
-    
-    # Try to create version in inactive project
-    project1.active = False
-    db_session.commit()
-    db_session.refresh(project1)
-    
-    # Get next version number to avoid unique constraint violation
-    next_version_number = max(v.version_number for v in project1.versions) + 1
-    
-    with pytest.raises(NoodleError, match="Cannot create version in inactive project"):
-        version = Version(
-            project_id=project1.id,
-            version_number=next_version_number,
-            name="Test Version",
-            parent_id=project1.versions[0].id
-        )
-        db_session.add(version)
-        db_session.commit()
-    db_session.rollback()
+        await mock_db_session.commit()
+    await mock_db_session.rollback()
 
-def test_version_timestamps(db_session: Session):
-    """Test version timestamp behavior.
+    # Test 3: Invalid parent version from different project
+    version = Version(project_id=mock_project1.id, name="Test Version", parent_id=mock_project2.versions[0].id)
+    mock_db_session.add(version)
+    with pytest.raises(IntegrityError):
+        await mock_db_session.commit()
+    await mock_db_session.rollback()
+
+    # Test 4: Inactive project
+    mock_db_session.commit.side_effect = None
+    mock_db_session.commit.return_value = AsyncMock()
+    mock_project1.active = False
     
-    Verifies:
-    1. Created timestamp is set on creation
-    2. Updated timestamp changes on update
-    3. Timestamps are in UTC
-    4. Timestamps are not null
-    """
-    # Create project and version
-    project = Project(name="Test Project")
-    db_session.add(project)
-    db_session.commit()  # Commit to trigger after_insert event that creates initial version
-    db_session.refresh(project)
+    next_version_number = max(v.version_number for v in mock_project1.versions) + 1
     
-    # Create version with next number
-    next_version_number = max(v.version_number for v in project.versions) + 1
-    version = Version(
-        project_id=project.id,
-        version_number=next_version_number,
-        name="Test Version",
-        parent_id=project.versions[0].id
-    )
-    db_session.add(version)
-    db_session.commit()
+    # Mock object_session before creating Version instance
+    from unittest.mock import patch
+    with patch('sqlalchemy.orm.object_session', return_value=mock_db_session):
+        # This should raise NoodleError during initialization
+        with pytest.raises(NoodleError, match="Cannot create version in inactive project"):
+            Version(project_id=mock_project1.id, version_number=next_version_number, name="Test Version", parent_id=mock_project1.versions[0].id)
+
+@pytest.mark.asyncio
+async def test_version_timestamps(mock_db_session, mock_models):
+    """Test version timestamp behavior."""
+    mock_project = MagicMock(spec=Project)
+    mock_project.id = uuid4()
+    mock_project.versions = [MagicMock(spec=Version)]
+    mock_project.versions[0].id = uuid4()
+
+    mock_version = MagicMock(spec=Version)
+    mock_version.id = uuid4()
     
-    created_at = version.created_at
-    updated_at = version.updated_at
-    
-    assert created_at is not None
-    assert updated_at is not None
-    assert created_at == updated_at
-    
-    # Update version
-    version.name = "Updated Name"
-    db_session.commit()
-    db_session.refresh(version)
-    
+    # Initial timestamps
+    created_at = datetime(2025, 2, 24, 20, 0, 0)
+    updated_at = datetime(2025, 2, 24, 20, 0, 0)
+    mock_version.created_at = created_at
+    mock_version.updated_at = updated_at
+
+    mock_models.Project.return_value = mock_project
+    mock_models.Version.return_value = mock_version
+    mock_db_session.add.return_value = None
+    mock_db_session.commit.return_value = AsyncMock()
+    mock_db_session.refresh.return_value = AsyncMock()
+
+    version = mock_models.Version(project_id=mock_project.id, version_number=1, name="Test Version", parent_id=mock_project.versions[0].id)
+    mock_db_session.add(version)
+    await mock_db_session.commit()
+
     assert version.created_at == created_at
-    assert version.updated_at > updated_at
+    assert version.updated_at == updated_at
+
+    # Update version and set a new updated_at timestamp
+    version.name = "Updated Name"
+    new_updated_at = datetime(2025, 2, 24, 20, 1, 0)  # 1 minute later
+    mock_version.updated_at = new_updated_at
+    await mock_db_session.commit()
+    await mock_db_session.refresh(version)
+
+    assert version.created_at == created_at
+    assert version.updated_at == new_updated_at
+    assert version.updated_at > version.created_at

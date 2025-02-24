@@ -22,6 +22,8 @@ class File(Base):
     )
     
     def __init__(self, **kwargs):
+        if 'version_id' not in kwargs:
+            raise ValueError("version_id is required")
         if 'path' in kwargs:
             if not kwargs['path']:
                 raise ValueError("File path cannot be empty")

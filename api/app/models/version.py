@@ -15,21 +15,6 @@ from .file import File
 from .project import Project
 from ..errors import NoodleError, ErrorType
 
-# Register event listener for version validation
-@event.listens_for(Session, 'before_flush')
-def validate_version_creation(session, flush_context, instances):
-    """Validate version creation before flush.
-    
-    Verifies:
-    1. Project exists
-    2. Project is active
-    """
-    for obj in session.new:
-        if isinstance(obj, Version):
-            project = session.get(Project, obj.project_id)
-            if not project or not project.active:
-                raise NoodleError("Cannot create version in inactive project")
-
 class Version(Base):
     """SQLAlchemy model for versions.
     
@@ -65,8 +50,22 @@ class Version(Base):
         if kwargs['version_number'] < 0:
             raise NoodleError("Version number cannot be negative")
             
+        # Store project_id for validation
+        self.project_id = kwargs['project_id']
+            
         # Initialize to set up relationships
         super().__init__(**kwargs)
+
+        # Get session and validate project is active
+        session = object_session(self)
+        if session:
+            self.validate(session)
+
+    def validate(self, session):
+        """Validate version state."""
+        project = session.get(Project, self.project_id)
+        if not project or not project.active:
+            raise NoodleError("Cannot create version in inactive project")
 
     # Relationships
     project: Mapped["Project"] = relationship("Project", back_populates="versions")
@@ -80,3 +79,10 @@ class Version(Base):
     def active(self) -> bool:
         """Whether this version is active (inherited from project)."""
         return self.project.active
+
+@event.listens_for(Session, "before_commit")
+def validate_version_before_commit(session):
+    """Validate version creation before commit."""
+    for obj in session.new:
+        if isinstance(obj, Version):
+            obj.validate(session)
