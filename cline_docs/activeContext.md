@@ -1,7 +1,7 @@
 # Active Context
 
-## Current State (Updated 2024-02-24 17:27 PST)
-Fixed all tests in version_crud.py by implementing proper AsyncMock handling and sequence-based mocking for multiple queries. All tests in app/crud/tests/ are now passing. Next focus is on template.py tests and routes test implementation issues.
+## Current State (Updated 2024-02-24 17:37 PST)
+Fixed all tests in version_crud.py and template.py by implementing proper AsyncMock handling and file system mocking. All tests in app/crud/tests/ are now passing with template.py achieving 100% coverage. Next focus is on routes test implementation issues.
 
 ### Recent Test Fixes
 1. test_latest_version_number:
@@ -118,12 +118,12 @@ Current coverage report shows:
 - Maintained existing functionality
 - Preserved database schema
 
-## CRUD Module Test Coverage Analysis (Updated 2024-02-24 16:30 PST)
+## CRUD Module Test Coverage Analysis (Updated 2024-02-24 17:37 PST)
 
 ### Coverage Summary
 - app/crud/version/file_operations.py: 100% coverage (30/30 statements)
 - app/crud/version/crud.py: 32% coverage (42/62 statements missing)
-- app/crud/version/template.py: 0% coverage (21/21 statements missing)
+- app/crud/version/template.py: 100% coverage (21/21 statements covered)
 - app/crud/file.py: 58% coverage (8/19 statements missing)
 - app/crud/project.py: 49% coverage (20/39 statements missing)
 
@@ -265,15 +265,15 @@ Current coverage report shows:
    - ✅ Added test patterns and examples
 
 ## Next Steps
-1. Fix AsyncMock issues in version_crud.py tests:
-   - Configure AsyncMock to not return coroutines for certain methods
-   - Implement proper side_effect handling for query-specific returns
-   - Address transaction context manager mocking
+1. Fix routes test implementation issues:
+   - Implement missing `create_initial_version` method in VersionCRUD class
+   - Fix JSON syntax errors in test files (missing commas between properties)
+   - Add proper mock_db fixture to routes tests
 
-2. Implement template.py tests:
-   - Mock file system operations
-   - Test template file loading
-   - Verify version creation with template files
+2. Improve routes test coverage:
+   - Add tests for error paths in both routes files
+   - Add tests for exception handling in create_version
+   - Add tests for validation logic
 
 3. Improve CRUD test coverage:
    - Add tests for crud.py core operations

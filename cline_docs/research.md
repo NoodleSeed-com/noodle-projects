@@ -615,7 +615,7 @@ Research findings on effective SQLAlchemy query mocking:
    - Test mock behavior independently before complex tests
    - Consider integration tests for complex query scenarios
 
-### File Operations Testing Patterns
+### File System Testing Patterns (Updated 2024-02-24 17:45 PST)
 Research findings on testing file system operations:
 
 1. Mock File System
@@ -636,21 +636,67 @@ Research findings on testing file system operations:
                    result = await create_initial_version(db, project_id)
    ```
 
-2. Mock File Content
+2. File-Specific Content Mocking
    ```python
-   # Mock different file contents
-   mock_files = {
-       "file1.txt": "content1",
-       "file2.txt": "content2"
-   }
+   # Create a more specific mock_open that returns different content based on the file
+   template_files = [
+       ("package.json", '{"name": "test-project"}'),
+       ("tsconfig.json", '{"compilerOptions": {}}'),
+       ("src/App.tsx", "export const App = () => <div>App</div>;")
+   ]
    
-   # Configure mock_open with different content per file
-   m = mock_open()
-   for filename, content in mock_files.items():
-       m.side_effect = lambda f, *args, **kwargs: mock_open(read_data=mock_files.get(f, "")).return_value
+   # Map file paths to content
+   file_contents = {f"/templates/version-0/{path}": content for path, content in template_files}
+   
+   # Create custom mock_open function
+   def mock_file_open(filename, *args, **kwargs):
+       content = file_contents.get(filename, "default content")
+       return mock_open(read_data=content)()
+   
+   # Use in patch
+   with patch('builtins.open', mock_file_open):
+       # Function call
+       result = await create_initial_version(db, project_id)
    ```
 
-3. Directory Existence Checks
+3. Path Resolution Mocking
+   ```python
+   # Create a fixed template directory path for the test
+   fixed_template_dir = "/fixed/path/templates/version-0"
+   
+   # Mock os.path.join to return the fixed path when called with expected arguments
+   original_join = os.path.join
+   def mock_join(*args):
+       # If this is the call to get the template directory
+       if len(args) >= 5 and args[-2:] == ('templates', 'version-0'):
+           return fixed_template_dir
+       # Otherwise, use the original join
+       return original_join(*args)
+   
+   # Use in patch
+   with patch('os.path.join', side_effect=mock_join):
+       # Function call
+       result = await create_initial_version(db, project_id)
+   ```
+
+4. Avoiding Recursion in Path Operations
+   ```python
+   # WRONG: Creates infinite recursion
+   def mock_dirname(path):
+       return os.path.dirname(path)  # Calls itself through the mock
+   
+   # RIGHT: Handle specific cases
+   def mock_dirname(path):
+       if path == __file__:
+           return "/known/path"
+       elif path == "/some/specific/path":
+           return "/some/specific"
+       else:
+           # Use a non-recursive implementation
+           return path.rsplit('/', 1)[0] if '/' in path else path
+   ```
+
+5. Directory Existence Checks
    ```python
    # Mock os.path.exists
    with patch('os.path.exists', return_value=True):
@@ -660,12 +706,14 @@ Research findings on testing file system operations:
            result = await function_under_test()
    ```
 
-4. Key Learnings
+6. Key Learnings
    - Use patch context managers for file system functions
-   - Configure mock_open for file content
-   - Mock directory existence checks
+   - Create file-specific content mocks for realistic testing
+   - Avoid recursive calls in mock implementations
+   - Mock path resolution carefully to avoid infinite recursion
    - Test file system operations independently
    - Consider integration tests for complex file operations
+   - Ensure AsyncMock side_effect=None for async functions that interact with file system
 
 ## Future Research Topics
 
