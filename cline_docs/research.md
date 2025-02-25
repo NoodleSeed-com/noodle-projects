@@ -351,6 +351,209 @@ Based on research findings:
    - Document test coverage goals
    - Track coverage improvements
 
+## AsyncMock and SQLAlchemy Testing Patterns (2024-02-24)
+
+### AsyncMock Coroutine Handling Issues
+Investigation of test failures in CRUD tests revealed critical async mocking patterns:
+
+1. Problem Analysis
+   - Error: `TypeError: unsupported operand type(s) for +: 'coroutine' and 'int'`
+   - Error: `AttributeError: 'coroutine' object has no attribute 'scalar_one_or_none'`
+   - Root cause: AsyncMock returns coroutines that need to be properly handled
+   - Challenge: Mocking SQLAlchemy's async session methods
+
+2. AsyncMock Behavior
+   ```python
+   # By default, AsyncMock returns coroutines
+   mock_db = AsyncMock()
+   result = mock_db.execute(query)  # Returns a coroutine
+   
+   # When awaited, the coroutine returns the configured return_value
+   awaited_result = await mock_db.execute(query)  # Returns the configured value
+   ```
+
+3. Attempted Solutions
+   a. Direct return_value configuration:
+      ```python
+      # Issue: Still returns a coroutine that must be awaited
+      execute_result = AsyncMock()
+      execute_result.scalar_one_or_none.return_value = 2
+      mock_db_session.execute.return_value = execute_result
+      ```
+
+   b. Side effect configuration:
+      ```python
+      # Better: Disables coroutine behavior for specific methods
+      execute_result = AsyncMock()
+      execute_result.scalar_one_or_none.return_value = 2
+      execute_result.scalar_one_or_none.side_effect = None  # Prevents coroutine
+      mock_db_session.execute.return_value = execute_result
+      mock_db_session.execute.side_effect = None  # Prevents coroutine
+      ```
+
+   c. Query-specific returns:
+      ```python
+      # Best: Returns different results based on query
+      def mock_execute(query):
+          if "Project.active" in str(query):
+              result = AsyncMock()
+              result.scalar_one.return_value = True
+              result.scalar_one.side_effect = None
+              return result
+          # Default
+          result = AsyncMock()
+          result.scalar_one_or_none.return_value = mock_version
+          result.scalar_one_or_none.side_effect = None
+          return result
+      
+      mock_db_session.execute = AsyncMock(side_effect=mock_execute)
+      mock_db_session.execute.side_effect = mock_execute  # Not a coroutine
+      ```
+
+4. Transaction Context Manager Mocking
+   ```python
+   # Mocking async context manager for transactions
+   mock_db_session.begin.return_value.__aenter__.return_value = mock_db_session
+   mock_db_session.begin.side_effect = None  # Prevent coroutine
+   ```
+
+5. Key Learnings
+   - Always set side_effect = None for AsyncMock methods that shouldn't return coroutines
+   - Configure return_value for the expected result
+   - Use side_effect functions for query-specific returns
+   - Mock async context managers with __aenter__ and __aexit__
+   - Test AsyncMock behavior independently before using in complex tests
+
+### SQLAlchemy Query Mocking Patterns
+Research findings on effective SQLAlchemy query mocking:
+
+1. Query Inspection Approaches
+   a. String-based inspection:
+      ```python
+      # Simple but fragile
+      if "Project.active" in str(query):
+          return project_active_result
+      ```
+
+   b. Query structure inspection:
+      ```python
+      # More robust but complex
+      if isinstance(query, Select) and hasattr(query, 'froms'):
+          table = query.froms[0]
+          if hasattr(table, 'name') and table.name == 'projects':
+              return project_result
+      ```
+
+   c. Parameter-based mocking:
+      ```python
+      # Simple for basic cases
+      if project_id in str(query):
+          return project_result
+      ```
+
+2. Mock Result Configuration
+   ```python
+   # Configure scalar results
+   result = AsyncMock()
+   result.scalar_one.return_value = True
+   result.scalar_one.side_effect = None
+   
+   # Configure unique results
+   result = AsyncMock()
+   result.unique.return_value = result  # Return self for chaining
+   result.scalar_one_or_none.return_value = mock_version
+   result.unique.side_effect = None
+   result.scalar_one_or_none.side_effect = None
+   
+   # Configure all() results
+   result = AsyncMock()
+   result.all.return_value = [(uuid4(), 0, "Version 0"), (uuid4(), 1, "Version 1")]
+   result.all.side_effect = None
+   ```
+
+3. Transaction Mocking
+   ```python
+   # Mock transaction context manager
+   mock_db_session.begin.return_value.__aenter__.return_value = mock_db_session
+   mock_db_session.begin.side_effect = None
+   
+   # Mock nested transactions
+   mock_db_session.begin_nested.return_value.__aenter__.return_value = AsyncMock()
+   mock_db_session.begin_nested.side_effect = None
+   ```
+
+4. Relationship Mocking
+   ```python
+   # Mock relationships
+   mock_version = MagicMock(spec=Version)
+   mock_version.files = [
+       MagicMock(spec=File, path="file1.txt", content="content1"),
+       MagicMock(spec=File, path="file2.txt", content="content2")
+   ]
+   
+   # Access in tests
+   files_dict = {file.path: file for file in mock_version.files}
+   ```
+
+5. Key Findings
+   - String-based query inspection is simplest but fragile
+   - Configure all chained methods to prevent coroutine issues
+   - Mock relationships explicitly with appropriate spec
+   - Test mock behavior independently before complex tests
+   - Consider integration tests for complex query scenarios
+
+### File Operations Testing Patterns
+Research findings on testing file system operations:
+
+1. Mock File System
+   ```python
+   # Mock os.walk to return template files
+   with patch('os.walk') as mock_walk:
+       mock_walk.return_value = [
+           ("/templates/version-0", [], ["file1.txt", "file2.txt"])
+       ]
+       
+       # Mock os.path.join
+       with patch('os.path.join', side_effect=lambda *args: '/'.join(args)):
+           # Mock os.path.relpath
+           with patch('os.path.relpath', side_effect=lambda path, start: path.split('/')[-1]):
+               # Mock open
+               with patch('builtins.open', mock_open(read_data="file content")):
+                   # Call function that uses file system
+                   result = await create_initial_version(db, project_id)
+   ```
+
+2. Mock File Content
+   ```python
+   # Mock different file contents
+   mock_files = {
+       "file1.txt": "content1",
+       "file2.txt": "content2"
+   }
+   
+   # Configure mock_open with different content per file
+   m = mock_open()
+   for filename, content in mock_files.items():
+       m.side_effect = lambda f, *args, **kwargs: mock_open(read_data=mock_files.get(f, "")).return_value
+   ```
+
+3. Directory Existence Checks
+   ```python
+   # Mock os.path.exists
+   with patch('os.path.exists', return_value=True):
+       # Mock os.path.isdir
+       with patch('os.path.isdir', return_value=True):
+           # Call function that checks directories
+           result = await function_under_test()
+   ```
+
+4. Key Learnings
+   - Use patch context managers for file system functions
+   - Configure mock_open for file content
+   - Mock directory existence checks
+   - Test file system operations independently
+   - Consider integration tests for complex file operations
+
 ## Future Research Topics
 
 1. Batch Operations

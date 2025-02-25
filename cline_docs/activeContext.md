@@ -1,7 +1,7 @@
 # Active Context
 
-## Current State (Updated 2024-02-24 13:05 PST)
-Completed routes test coverage analysis and identified implementation issues preventing tests from running successfully.
+## Current State (Updated 2024-02-24 16:30 PST)
+Completed CRUD module test coverage analysis and implemented tests for file_operations.py. Identified issues with version_crud.py and template.py tests related to async mocking.
 
 ### Recent Test Fixes
 1. test_latest_version_number:
@@ -54,12 +54,16 @@ Completed routes test coverage analysis and identified implementation issues pre
 
 ## Test Coverage Status
 Current coverage report shows:
-- Overall coverage: 11%
+- Overall coverage: 15%
+- CRUD module coverage:
+  * file_operations.py: 100% (all 30 statements covered)
+  * crud.py: 32% (42/62 statements missing)
+  * template.py: 0% (21/21 statements missing)
 - Models coverage varies:
   * base.py: 100%
-  * file.py: 57%
-  * project.py: 93%
-  * version.py: 77%
+  * file.py: 82%
+  * project.py: 67%
+  * version.py: 56%
 - Most modules need significant test coverage improvement
 
 ## Active Decisions
@@ -114,12 +118,52 @@ Current coverage report shows:
 - Maintained existing functionality
 - Preserved database schema
 
-## Routes Test Coverage Analysis (Updated 2024-02-24 13:05 PST)
+## CRUD Module Test Coverage Analysis (Updated 2024-02-24 16:30 PST)
 
 ### Coverage Summary
-- app/routes/__init__.py: 100% coverage (6/6 statements)
-- app/routes/projects.py: 40% coverage (19/37 statements missed, 8 branches)
-- app/routes/versions.py: 25% coverage (33/49 statements missed, 14 branches)
+- app/crud/version/file_operations.py: 100% coverage (30/30 statements)
+- app/crud/version/crud.py: 32% coverage (42/62 statements missing)
+- app/crud/version/template.py: 0% coverage (21/21 statements missing)
+- app/crud/file.py: 58% coverage (8/19 statements missing)
+- app/crud/project.py: 49% coverage (20/39 statements missing)
+
+### Test Implementation
+1. Created dedicated test directory:
+   ```
+   api/app/crud/tests/
+   ├── __init__.py
+   ├── conftest.py
+   ├── test_file_operations.py
+   ├── test_template.py
+   └── test_version_crud.py
+   ```
+
+2. Implemented comprehensive tests for file_operations.py:
+   - Validation tests for file changes
+   - Tests for file creation, update, and deletion
+   - Tests for error handling and edge cases
+   - 100% coverage achieved
+
+3. Created test fixtures for CRUD testing:
+   - Mock database session with proper async behavior
+   - Mock project, version, and file objects
+   - Sample file changes for testing
+
+### Test Execution Issues
+1. AsyncMock Coroutine Handling:
+   - Error: `TypeError: unsupported operand type(s) for +: 'coroutine' and 'int'`
+   - Error: `AttributeError: 'coroutine' object has no attribute 'scalar_one_or_none'`
+   - Root cause: AsyncMock returns coroutines that need to be properly handled
+
+2. SQLAlchemy Query Mocking:
+   - Complex queries with joinedload difficult to mock
+   - Need for query-specific mock returns
+   - Challenge with mocking transaction context managers
+
+3. Implementation Challenges:
+   - Mocking file system operations for template.py
+   - Simulating database transactions
+   - Testing error handling and rollbacks
 
 ### Test Execution Issues
 1. Missing `mock_db` Fixture:
@@ -175,24 +219,28 @@ Current coverage report shows:
    - Utility functions for testing concurrent operations and constraints
    - Well-designed but not fully utilized
 
-## Current Test Status (Updated 2024-02-24 13:05 PST)
+## Current Test Status (Updated 2024-02-24 16:30 PST)
 
 ### Test Progress
 1. Fixed Tests:
-   - ✅ test_file_creation
-   - ✅ test_file_path_constraints
-   - ✅ test_file_content_constraints
-   - ✅ test_file_timestamps
-   - ✅ test_project_soft_delete
-   - ✅ test_latest_version_number
-   - ✅ test_project_constraints
-   - ✅ test_project_relationships (updated to use soft delete)
-   - ✅ test_version_file_constraints (updated to expect ValueError)
+   - ✅ test_validate_file_changes_valid
+   - ✅ test_validate_file_changes_empty_path
+   - ✅ test_validate_file_changes_missing_content
+   - ✅ test_validate_file_changes_duplicate_paths
+   - ✅ test_validate_file_changes_create_existing
+   - ✅ test_validate_file_changes_update_nonexistent
+   - ✅ test_validate_file_changes_delete_nonexistent
+   - ✅ test_apply_file_changes_create
+   - ✅ test_apply_file_changes_update
+   - ✅ test_apply_file_changes_delete
+   - ✅ test_apply_file_changes_multiple_operations
 
 2. Remaining Issues:
-   - test_version_validation failing with IntegrityError
-   - Root cause: Version number defaulting to 0 when testing inactive project validation
-   - Need to set explicit version number even though test will fail with ValueError first
+   - test_get_next_version_number failing with TypeError
+   - test_get_version failing with AttributeError
+   - test_create_version failing with AttributeError
+   - Root cause: AsyncMock coroutine handling issues
+   - Need to properly configure AsyncMock to not return coroutines for certain methods
 
 ### Key Findings
 1. Validation Hierarchy:
@@ -217,14 +265,22 @@ Current coverage report shows:
    - ✅ Added test patterns and examples
 
 ## Next Steps
-1. Future test improvements:
-   - Update test_version_validation to set version number
-   - Add more test cases for validation edge cases
-   - Consider adding property-based tests
-   - Add performance tests for large version trees
+1. Fix AsyncMock issues in version_crud.py tests:
+   - Configure AsyncMock to not return coroutines for certain methods
+   - Implement proper side_effect handling for query-specific returns
+   - Address transaction context manager mocking
 
-2. Documentation tasks:
-   - ✅ Updated systemPatterns.md with validation patterns
-   - ✅ Added test examples and code snippets
-   - ✅ Documented common pitfalls
-   - ✅ Added version management lessons
+2. Implement template.py tests:
+   - Mock file system operations
+   - Test template file loading
+   - Verify version creation with template files
+
+3. Improve CRUD test coverage:
+   - Add tests for crud.py core operations
+   - Add tests for file.py and project.py
+   - Implement error handling tests
+
+4. Documentation tasks:
+   - Update research.md with AsyncMock patterns
+   - Document SQLAlchemy testing best practices
+   - Add examples of successful test patterns

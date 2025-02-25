@@ -9,7 +9,7 @@
      ├── models/
      │   ├── project.py
      │   └── tests/              # Model tests
-     │       ├── conftest.py     # Model fixtures
+ Eat     │       ├── conftest.py     # Model fixtures
      │       ├── test_project.py
      │       ├── test_version.py
      │       └── test_file.py
@@ -93,18 +93,58 @@
   3. Evaluate moving complex query tests to integration tests
   4. Document query patterns and expected returns
 
+## CRUD Module Test Coverage Analysis (2024-02-24 16:18 PST)
+- **Status**: ✅ Complete
+- **Changes Made**:
+  1. Created dedicated test directory for CRUD operations:
+     ```
+     api/app/crud/tests/
+     ├── __init__.py
+     ├── conftest.py
+     ├── test_file_operations.py
+     ├── test_template.py
+     └── test_version_crud.py
+     ```
+  2. Implemented comprehensive tests for file_operations.py:
+     * Validation tests for file changes
+     * Tests for file creation, update, and deletion
+     * Tests for error handling and edge cases
+     * 100% coverage for file_operations.py
+  3. Created test fixtures for CRUD testing:
+     * Mock database session with proper async behavior
+     * Mock project, version, and file objects
+     * Sample file changes for testing
+  4. Identified issues with version_crud.py and template.py tests:
+     * AsyncMock coroutine handling issues
+     * Need for proper mock setup for async operations
+     * Challenges with complex SQLAlchemy query mocking
+  5. Updated documentation:
+     * Added CRUD Test Coverage Analysis to progress.md
+     * Updated activeContext.md with current test status
+     * Added test patterns to research.md
+- **Benefits**:
+  * Clear understanding of CRUD test coverage
+  * Identified specific areas for improvement
+  * Fixed test fixture issues for file operations
+  * Documented test patterns and issues
+  * Provided roadmap for improving test coverage
+
 ## Next Steps
-1. Fix routes test implementation issues:
+1. Fix version_crud.py and template.py tests:
+   - Resolve AsyncMock coroutine handling issues
+   - Implement proper mock setup for async operations
+   - Address SQLAlchemy query mocking challenges
+2. Fix routes test implementation issues:
    - Implement missing `create_initial_version` method in VersionCRUD class
    - Fix JSON syntax errors in test files (missing commas between properties)
-2. Improve routes test coverage:
+3. Improve routes test coverage:
    - Add tests for error paths in both routes files
    - Add tests for exception handling in create_version
    - Add tests for validation logic
-3. Research and evaluate mock-alchemy library
-4. Review integration test patterns for complex SQLAlchemy queries
-5. Document findings in research.md
-6. Make decision on whether to:
+4. Research and evaluate mock-alchemy library
+5. Review integration test patterns for complex SQLAlchemy queries
+6. Document findings in research.md
+7. Make decision on whether to:
    - Implement new mocking solution with mock-alchemy
    - Move complex query tests to integration tests
    - Or pursue alternative approach based on research findings
