@@ -239,6 +239,128 @@ Benefits:
    - Indicate scope if relevant
    - Document dependencies
 
+### SQLAlchemy Event Listeners with Async Functions
+
+1. Problem:
+   - SQLAlchemy's event system doesn't natively support async functions
+   - Using async functions as event listeners causes "coroutine was never awaited" warnings
+   - Example of problematic code:
+   ```python
+   @event.listens_for(Project, 'after_insert')
+   async def create_initial_version(mapper, connection, project):
+       """Create version 0 with template files when a project is created."""
+       # This async function is never properly awaited by SQLAlchemy's event system
+       # ...
+   ```
+
+2. Solution Pattern:
+   - Use a synchronous event listener that calls the async function using asyncio.create_task()
+   - Example:
+   ```python
+   import asyncio
+   from sqlalchemy.ext.asyncio import AsyncSession
+
+   # Separate the async implementation
+   async def async_create_initial_version(project_id, session):
+       """Async implementation of initial version creation."""
+       # Async implementation here
+       pass
+
+   # Create a synchronous event listener
+   def create_initial_version_listener(mapper, connection, target):
+       """Synchronous event listener that schedules the async function."""
+       # Create a task to run the async function
+       asyncio.create_task(
+           async_create_initial_version(
+               target.id, 
+               AsyncSession(bind=connection)
+           )
+       )
+
+   # Register the synchronous event listener
+   event.listen(Project, 'after_insert', create_initial_version_listener)
+   ```
+
+3. Benefits:
+   - Keeps the event listener synchronous, which is what SQLAlchemy expects
+   - Allows async code to run in response to the event
+   - Properly schedules the async function to run in the background
+   - Avoids "coroutine was never awaited" warnings
+   - Maintains proper async/await patterns
+
+4. Testing Considerations:
+   - In tests, you may need to mock asyncio.create_task to verify it was called
+   - Consider adding a background task manager for error handling
+   - Be cautious about test isolation when using background tasks
+   - Consider using FastAPI's BackgroundTasks for better error handling
+
+### Testing Async Code with pytest-asyncio
+
+1. Setup:
+   - Install pytest-asyncio: `pip install pytest-asyncio`
+   - Mark tests with `@pytest.mark.asyncio`
+   - Configure pytest.ini if needed:
+   ```ini
+   [pytest]
+   asyncio_mode = auto
+   ```
+
+2. Async Test Structure:
+   ```python
+   @pytest.mark.asyncio
+   async def test_async_function():
+       # Arrange
+       data = await setup_test_data()
+       
+       # Act
+       result = await function_under_test(data)
+       
+       # Assert
+       assert result == expected_result
+   ```
+
+3. Mocking Async Functions:
+   ```python
+   from unittest.mock import AsyncMock
+   
+   @pytest.mark.asyncio
+   async def test_with_async_mock():
+       # Create AsyncMock
+       mock_service = AsyncMock()
+       mock_service.get_data.return_value = {"key": "value"}
+       
+       # Use in test
+       result = await function_that_uses_service(mock_service)
+       
+       # Verify
+       mock_service.get_data.assert_called_once()
+       assert result == expected_result
+   ```
+
+4. Handling Side Effects:
+   ```python
+   # For multiple return values
+   mock_service.get_data.side_effect = [
+       {"first": "response"},
+       {"second": "response"}
+   ]
+   
+   # For raising exceptions
+   mock_service.get_data.side_effect = ValueError("Test error")
+   
+   # For custom async functions
+   async def custom_side_effect(arg):
+       return {"processed": arg}
+       
+   mock_service.get_data.side_effect = custom_side_effect
+   ```
+
+5. Common Pitfalls:
+   - Forgetting to await async functions
+   - Mixing sync and async code incorrectly
+   - Not handling event loop properly
+   - Improper transaction management in async tests
+
 ### Test Documentation Patterns
 
 1. Test Docstrings:

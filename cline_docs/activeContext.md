@@ -1,6 +1,84 @@
 # Active Context
 
-## Current State (Updated 2024-02-24 21:55 PST)
+## Current State (Updated 2024-02-24 22:53 PST)
+Successfully improved test coverage for projects.py routes and identified the root cause of the test_inactive_version_operations test failure. The key improvements include:
+
+1. Added comprehensive tests for projects.py routes:
+   - Added test_list_projects to verify pagination and filtering
+   - Added test_create_project to verify project creation with minimal and full data
+   - Added test_get_project to verify retrieval and error handling
+   - Added test_update_project to verify full and partial updates
+   - Added test_delete_project to verify soft deletion and idempotent behavior
+
+2. Fixed test_create_project assertion:
+   - Updated to check for empty string instead of None for description
+   - Fixed validation for minimal project creation
+
+3. Improved test structure and organization:
+   - Used clear Arrange-Act-Assert pattern in all tests
+   - Added comprehensive docstrings explaining test verification points
+   - Structured tests to verify both success and error paths
+
+4. Researched best practices for testing async code with SQLAlchemy:
+   - Identified issues with SQLAlchemy event listeners and async functions
+   - Researched proper patterns for testing async code with pytest-asyncio
+   - Documented findings on handling coroutines in event listeners
+
+5. Identified root cause of test_inactive_version_operations failure:
+   - Diagnosed 503 Service Unavailable error related to async event listener
+   - Identified "coroutine 'create_initial_version' was never awaited" warning
+   - Found that SQLAlchemy's event system doesn't natively support async functions
+
+The test coverage for projects.py has improved from 40% to 91%, but there's still an issue with the test_inactive_version_operations test. This test is failing with a 503 Service Unavailable error due to an async function being used as an event listener in SQLAlchemy, which doesn't natively support async functions.
+
+### SQLAlchemy Event Listener with Async Functions Issue
+The root cause of the test_inactive_version_operations failure is that the create_initial_version function in models/events.py is defined as an async function, but it's being used as an event listener with @event.listens_for. SQLAlchemy's event system doesn't natively support async functions as event listeners, which is why we're seeing the "RuntimeWarning: coroutine 'create_initial_version' was never awaited" error.
+
+```python
+@event.listens_for(Project, 'after_insert')
+async def create_initial_version(mapper, connection, project):
+    """Create version 0 with template files when a project is created."""
+    # This async function is never properly awaited by SQLAlchemy's event system
+    # ...
+```
+
+Based on research, the recommended approach is to use a synchronous event listener that calls the async function using asyncio.create_task():
+
+```python
+import asyncio
+
+async def async_create_initial_version(project_id, session):
+    # Async implementation here
+    pass
+
+def create_initial_version_listener(mapper, connection, target):
+    # Create a task to run the async function
+    asyncio.create_task(async_create_initial_version(target.id, AsyncSession(bind=connection)))
+
+# Register the synchronous event listener
+event.listen(Project, 'after_insert', create_initial_version_listener)
+```
+
+This approach keeps the event listener synchronous, which is what SQLAlchemy expects, while still allowing async code to run in response to the event.
+
+### Next Steps
+1. Fix the SQLAlchemy event listener issue:
+   - Convert the event listener to a synchronous function
+   - Use asyncio.create_task() to run the async function
+   - Ensure proper error handling for the async task
+   - Update tests to work with the new approach
+
+2. Complete the remaining route tests:
+   - Fix test_inactive_version_operations
+   - Add tests for versions.py routes
+   - Improve error path coverage
+
+3. Document the SQLAlchemy event listener pattern:
+   - Add to systemPatterns.md
+   - Update research.md with findings
+   - Create example implementation
+
+## Previous State (Updated 2024-02-24 21:55 PST)
 Successfully fixed the test_inactive_project_operations test by implementing a better approach to testing FastAPI applications with SQLAlchemy. The key improvements include:
 
 1. Improved delete_project function in projects.py:

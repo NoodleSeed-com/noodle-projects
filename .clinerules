@@ -1,5 +1,13 @@
 # Project Configuration (.clinerules)
 
+## Memory Bank Index
+- projectbrief.md: Core requirements, goals, project scope
+- productContext.md: Business logic, user experience, problem domain
+- activeContext.md: Current work state, recent changes, next steps
+- systemPatterns.md: Architecture, technical decisions, design patterns
+- techContext.md: Tech stack, setup, constraints, dependencies
+- progress.md: Project status, working features, known issues
+
 ## Project Overview
 - Type: FastAPI Microservice
 - Created: 2024-02-22
@@ -382,14 +390,13 @@ pip install -r api/requirements.txt
 ├── supabase/               # Database
 │   ├── seed.sql
 │   └── config.toml
-└── cline_docs/             # Documentation
-    ├── projectbrief.md
-    ├── systemPatterns.md
-    ├── techContext.md
-    ├── productContext.md
-    ├── activeContext.md
-    ├── progress.md
-    └── research.md
+└── cline_docs/             # Memory Bank location
+    ├── projectbrief.md     # Core requirements, goals, project scope
+    ├── productContext.md   # Business logic, user experience, problem domain
+    ├── activeContext.md    # Current work state, recent changes, next steps
+    ├── systemPatterns.md   # Architecture, technical decisions, design patterns
+    ├── techContext.md      # Tech stack, setup, constraints, dependencies
+    └── progress.md         # Project status, working features, known issues
 ```
 
 ## Environment Variables
