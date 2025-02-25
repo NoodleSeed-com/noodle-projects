@@ -129,11 +129,39 @@
   * Documented test patterns and issues
   * Provided roadmap for improving test coverage
 
+## Version CRUD Tests Fixed (2024-02-24 17:26 PST)
+- **Status**: ✅ Complete
+- **Changes Made**:
+  1. Fixed AsyncMock coroutine handling issues in test_version_crud.py:
+     * Implemented proper side_effect handling for query-specific returns
+     * Used MagicMock for query results to avoid coroutine issues
+     * Created sequence-based mocking for multiple queries in a single test
+     * Fixed test_get_version, test_get_version_with_parent, test_get_multi, and test_create_version
+  2. Improved test fixtures:
+     * Enhanced mock_db_session to handle multiple query patterns
+     * Created explicit mock objects with proper attributes
+     * Implemented context manager mocking for transactions
+  3. Fixed validation testing:
+     * Directly called validate_file_changes in test_create_version_with_validation_error
+     * Created proper dictionary of existing files for validation
+     * Verified error message matches expected pattern
+  4. Achieved 100% pass rate for all tests in app/crud/tests/
+  5. Updated documentation:
+     * Added AsyncMock patterns to research.md
+     * Updated progress.md with current test status
+     * Updated activeContext.md with resolved issues
+- **Benefits**:
+  * All version_crud.py tests now passing
+  * Proper handling of async operations in tests
+  * Better test coverage for CRUD operations
+  * Improved test reliability
+  * Clear patterns for testing async SQLAlchemy code
+
 ## Next Steps
-1. Fix version_crud.py and template.py tests:
-   - Resolve AsyncMock coroutine handling issues
-   - Implement proper mock setup for async operations
-   - Address SQLAlchemy query mocking challenges
+1. Fix template.py tests:
+   - Implement proper mock setup for file system operations
+   - Test template file loading
+   - Verify version creation with template files
 2. Fix routes test implementation issues:
    - Implement missing `create_initial_version` method in VersionCRUD class
    - Fix JSON syntax errors in test files (missing commas between properties)

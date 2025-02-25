@@ -424,6 +424,119 @@ Investigation of test failures in CRUD tests revealed critical async mocking pat
    - Mock async context managers with __aenter__ and __aexit__
    - Test AsyncMock behavior independently before using in complex tests
 
+### Sequence-Based Mocking for Multiple Queries
+Research findings from fixing version_crud.py tests:
+
+1. Problem Analysis
+   - Multiple queries in a single function
+   - Need for different mock responses per query
+   - Challenge: Returning different results for sequential calls to the same method
+   - Error: `AttributeError: 'coroutine' object has no attribute 'scalar_one_or_none'`
+
+2. Solution: Using side_effect as a List
+   ```python
+   # Create mock results for each query
+   version_result = MagicMock()
+   version_result.unique.return_value = version_result
+   version_result.scalar_one_or_none.return_value = mock_version
+   
+   parent_result = MagicMock()
+   parent_result.scalar_one_or_none.return_value = 0  # Parent version number
+   
+   project_active_result = MagicMock()
+   project_active_result.scalar_one.return_value = True
+   
+   # Set up the execute mock to return the results in sequence
+   mock_db_session.execute = AsyncMock()
+   mock_db_session.execute.side_effect = [
+       version_result,      # First call returns version
+       parent_result,       # Second call returns parent version number
+       project_active_result # Third call returns project active state
+   ]
+   ```
+
+3. Benefits of Sequence-Based Mocking
+   - Clear order of expected calls
+   - Different return types for each call
+   - No need for complex query inspection
+   - Simpler test maintenance
+   - Better test readability
+
+4. Implementation Pattern
+   ```python
+   # 1. Create mock results for each query with appropriate return values
+   result1 = MagicMock()
+   result1.method1.return_value = value1
+   
+   result2 = MagicMock()
+   result2.method2.return_value = value2
+   
+   # 2. Set up the side_effect as a list in the expected order
+   mock_object.method = AsyncMock()
+   mock_object.method.side_effect = [result1, result2]
+   
+   # 3. Call the function that makes multiple queries
+   result = await function_under_test()
+   
+   # 4. Verify the function called the method the expected number of times
+   assert mock_object.method.call_count == 2
+   ```
+
+5. Key Learnings
+   - Use side_effect as a list for sequential calls
+   - Create separate mock results for each query
+   - Configure each mock result with appropriate methods and return values
+   - Use MagicMock instead of AsyncMock for query results to avoid coroutine issues
+   - Verify the expected number of calls to ensure all mocks were used
+
+### MagicMock vs AsyncMock for Query Results
+Research findings on mock selection for SQLAlchemy query results:
+
+1. Problem Analysis
+   - AsyncMock returns coroutines that must be awaited
+   - Query results need synchronous method access (scalar_one, all, etc.)
+   - Challenge: Mixing async and sync behavior in mocks
+   - Error: `AttributeError: 'coroutine' object has no attribute 'scalar_one_or_none'`
+
+2. Solution: Use MagicMock for Query Results
+   ```python
+   # WRONG: Using AsyncMock for query results
+   version_result = AsyncMock()  # Returns coroutines for all methods
+   version_result.scalar_one_or_none.return_value = mock_version
+   
+   # RIGHT: Using MagicMock for query results
+   version_result = MagicMock()  # Returns regular values, not coroutines
+   version_result.scalar_one_or_none.return_value = mock_version
+   
+   # Use AsyncMock only for the execute method itself
+   mock_db_session.execute = AsyncMock()
+   mock_db_session.execute.side_effect = [version_result]
+   ```
+
+3. Implementation Pattern
+   ```python
+   # 1. Use AsyncMock for async methods (execute, commit, etc.)
+   mock_db_session = AsyncMock()
+   mock_db_session.execute = AsyncMock()
+   
+   # 2. Use MagicMock for query results
+   result = MagicMock()
+   result.scalar_one.return_value = True
+   
+   # 3. Configure AsyncMock to return MagicMock
+   mock_db_session.execute.return_value = result
+   
+   # 4. Call the function that uses the mock
+   await function_under_test(mock_db_session)
+   ```
+
+4. Key Learnings
+   - Use AsyncMock for methods that should be awaited (execute, commit, etc.)
+   - Use MagicMock for query results that have synchronous methods
+   - Configure AsyncMock to return MagicMock instances
+   - This pattern avoids coroutine issues while maintaining proper async behavior
+   - Simplifies test maintenance and debugging
+
 ### SQLAlchemy Query Mocking Patterns
 Research findings on effective SQLAlchemy query mocking:
 

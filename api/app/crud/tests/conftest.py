@@ -39,13 +39,28 @@ async def mock_db_session():
     session.get = MagicMock()
     session.flush = AsyncMock()
     
-    # Mock execute for select queries
-    execute_result = AsyncMock()
-    execute_result.scalar_one_or_none.return_value = None
-    execute_result.unique.return_value = execute_result
-    execute_result.scalar_one.return_value = True  # Default for active flag
-    execute_result.all.return_value = []
-    session.execute = AsyncMock(return_value=execute_result)
+    # Create a custom mock class for query results
+    class MockQueryResult:
+        def __init__(self, scalar_value=None):
+            self.scalar_value = scalar_value
+            
+        def scalar_one_or_none(self):
+            return self.scalar_value
+            
+        def scalar_one(self):
+            return True  # Default for active flag
+            
+        def unique(self):
+            return self
+            
+        def all(self):
+            return []
+    
+    # Use side_effect to return a MockQueryResult
+    async def mock_execute(*args, **kwargs):
+        return MockQueryResult()
+        
+    session.execute = AsyncMock(side_effect=mock_execute)
     
     # Mock commit to handle events and relationships
     async def mock_commit():

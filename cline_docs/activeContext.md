@@ -1,7 +1,7 @@
 # Active Context
 
-## Current State (Updated 2024-02-24 16:30 PST)
-Completed CRUD module test coverage analysis and implemented tests for file_operations.py. Identified issues with version_crud.py and template.py tests related to async mocking.
+## Current State (Updated 2024-02-24 17:27 PST)
+Fixed all tests in version_crud.py by implementing proper AsyncMock handling and sequence-based mocking for multiple queries. All tests in app/crud/tests/ are now passing. Next focus is on template.py tests and routes test implementation issues.
 
 ### Recent Test Fixes
 1. test_latest_version_number:
