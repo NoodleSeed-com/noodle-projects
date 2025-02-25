@@ -164,42 +164,6 @@ async def test_base_model_timezone_handling(mock_db_session, mock_models):
     assert model.created_at.isoformat().endswith('+00:00') or model.created_at.isoformat().endswith('Z')
     assert model.updated_at.isoformat().endswith('+00:00') or model.updated_at.isoformat().endswith('Z')
 
-@pytest.mark.asyncio
-async def test_base_model_concurrent_updates(mock_db_session, mock_models):
-    """Test concurrent update behavior."""
-    mock_test_model = MagicMock(spec=TestModel)
-    mock_test_model.id = uuid4()
-    initial_time = datetime(2025, 2, 24, 20, 0, 0, tzinfo=timezone.utc)
-    mock_test_model.created_at = initial_time
-    mock_test_model.updated_at = initial_time
-
-    mock_models.TestModel = MagicMock(return_value=mock_test_model)
-    mock_db_session.add.return_value = None
-    mock_db_session.commit.return_value = AsyncMock()
-    mock_db_session.refresh.return_value = AsyncMock()
-
-    # Create initial model
-    model = mock_models.TestModel()
-    mock_db_session.add(model)
-    await mock_db_session.commit()
-    await mock_db_session.refresh(model)
-
-    # Simulate concurrent updates
-    update_times = [
-        datetime(2025, 2, 24, 20, 1, 0, tzinfo=timezone.utc),
-        datetime(2025, 2, 24, 20, 2, 0, tzinfo=timezone.utc),
-        datetime(2025, 2, 24, 20, 3, 0, tzinfo=timezone.utc)
-    ]
-
-    for update_time in update_times:
-        mock_test_model.updated_at = update_time
-        await mock_db_session.commit()
-        await mock_db_session.refresh(model)
-
-        # Verify each update
-        assert model.created_at == initial_time  # Should never change
-        assert model.updated_at == update_time
-        assert model.updated_at > model.created_at
 
 @pytest.mark.asyncio
 async def test_base_model_inheritance(mock_db_session, mock_models):

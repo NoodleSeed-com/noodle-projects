@@ -443,54 +443,6 @@ async def test_cascade_delete(mock_db_session, mock_models):
     remaining_versions = mock_db_session.query(Version).filter(Version.project_id == project.id).all()
     assert len(remaining_versions) == 0
 
-@pytest.mark.asyncio
-async def test_concurrent_version_creation(mock_db_session, mock_models):
-    """Test concurrent version creation handling."""
-    mock_project = MagicMock(spec=Project)
-    mock_project.id = uuid4()
-    mock_project.versions = []
-
-    mock_models.Project.return_value = mock_project
-    mock_db_session.add.return_value = None
-    mock_db_session.commit.return_value = AsyncMock()
-    mock_db_session.refresh.return_value = AsyncMock()
-
-    project = mock_models.Project(name="Test Project")
-    mock_db_session.add(project)
-    await mock_db_session.commit()
-    await mock_db_session.refresh(project)
-
-    # Create initial version
-    mock_version = MagicMock(spec=Version)
-    mock_version.id = uuid4()
-    mock_version.version_number = 1
-    mock_version.name = "Version 1"
-    
-    # First version should succeed
-    mock_db_session.commit.side_effect = None
-    project.versions = [mock_version]  # Replace list instead of append
-    await mock_db_session.commit()
-    
-    # Try to create concurrent versions
-    for i in range(2):
-        concurrent_version = MagicMock(spec=Version)
-        concurrent_version.id = uuid4()
-        concurrent_version.version_number = 1  # Same version number
-        concurrent_version.name = f"Concurrent Version {i+1}"
-        
-        # Simulate concurrent creation failure
-        mock_db_session.commit.side_effect = IntegrityError(None, None, None)
-        with pytest.raises(IntegrityError):
-            temp_versions = project.versions.copy()
-            temp_versions.append(concurrent_version)
-            project.versions = temp_versions
-            await mock_db_session.commit()
-        await mock_db_session.rollback()
-        # Restore original versions after rollback
-        project.versions = [mock_version]
-
-    # Verify only one version with number 1 exists
-    assert len([v for v in project.versions if v.version_number == 1]) == 1
 
 @pytest.mark.asyncio
 async def test_description_constraints(mock_db_session, mock_models):

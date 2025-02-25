@@ -9,15 +9,9 @@ from sqlalchemy.orm import Session
 from pydantic import ValidationError, TypeAdapter
 from typing import List
 from app.crud import projects
-from app.models.project import (
-    ProjectCreate,
-    ProjectUpdate,
-    FileOperation,
-    FileChange,
-    ProjectResponse,
-    VersionResponse,
-    VersionListItem
-)
+from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse
+from app.schemas.version import VersionResponse, VersionListItem
+from app.schemas.common import FileOperation, FileChange
 
 # Type adapters for common validations
 project_list_adapter = TypeAdapter(List[ProjectResponse])

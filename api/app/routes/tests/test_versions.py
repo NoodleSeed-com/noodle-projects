@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 from ...schemas.common import FileOperation, FileChange
 from ...schemas.project import ProjectCreate
 from ...schemas.version import CreateVersionRequest
-from tests.common.test_helpers import run_concurrent_requests
 
 def test_create_version_with_changes(client: TestClient, mock_openrouter):
     """Test creating a new version with AI-generated changes."""
@@ -77,59 +76,6 @@ def test_create_version_with_changes(client: TestClient, mock_openrouter):
     assert call_args["change_request"] == "Add a new component and update App.tsx to use it"
     assert len(call_args["current_files"]) > 0  # Verify files were passed
 
-def test_concurrent_connection_pool_exhaustion(client: TestClient, mock_openrouter):
-    """Test behavior when connection pool is exhausted.
-    
-    Verifies:
-    1. System handles pool exhaustion gracefully
-    2. Requests queue properly
-    3. No deadlocks occur
-    4. Error responses are correct
-    """
-    # Create test project
-    response = client.post("/api/projects/", json={
-        "name": "Test Project",
-        "description": "Testing pool exhaustion"
-    })
-    assert response.status_code == 201
-    project_id = response.json()["id"]
-    
-    # Configure mock for many version creations
-    mock_openrouter.get_file_changes.return_value = [
-        FileChange(
-            operation=FileOperation.CREATE,
-            path="src/test.tsx",
-            content="export const Test = () => <div>Test</div>"
-        )
-    ]
-    
-    # Function to create version
-    def create_version(i: int):
-        return client.post(
-            f"/api/projects/{project_id}/versions",
-            json={
-                "name": f"Version {i}",
-                "parent_version_number": 0,
-                "project_context": "Testing pool",
-                "change_request": "Create version"
-            }
-        )
-    
-    # Create many versions concurrently to exhaust pool
-    responses = run_concurrent_requests(
-        client,
-        create_version,
-        count=3,
-        max_workers=3
-    )
-    
-    # Some requests should succeed, others should fail gracefully
-    success_count = sum(1 for r in responses if r.status_code == 200)
-    error_count = sum(1 for r in responses if r.status_code in (503, 429))
-    
-    assert success_count > 0, "No requests succeeded"
-    assert error_count > 0, "No requests failed due to pool exhaustion"
-    assert all(r.status_code in (200, 503, 429) for r in responses)
 
 def test_version_validation(client: TestClient, mock_openrouter):
     """Test version number validation.

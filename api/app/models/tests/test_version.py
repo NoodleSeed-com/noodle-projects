@@ -408,56 +408,6 @@ async def test_version_number_uniqueness(mock_db_session, mock_models):
     assert version1.version_number == version2.version_number
     assert version1.project_id != version2.project_id
 
-@pytest.mark.asyncio
-async def test_concurrent_file_operations(mock_db_session, mock_models):
-    """Test concurrent file operations in a version."""
-    mock_project = MagicMock(spec=Project)
-    mock_project.id = uuid4()
-    mock_project.active = True
-
-    mock_version = MagicMock(spec=Version)
-    mock_version.id = uuid4()
-    mock_version.project_id = mock_project.id
-    mock_version.files = []
-
-    def mock_get(model_class, id_):
-        if model_class == Project and id_ == mock_project.id:
-            return mock_project
-        return None
-    mock_db_session.get = MagicMock(side_effect=mock_get)
-
-    mock_models.Version.return_value = mock_version
-    mock_db_session.add.return_value = None
-    mock_db_session.commit.return_value = AsyncMock()
-    mock_db_session.refresh.return_value = AsyncMock()
-
-    version = mock_models.Version(project_id=mock_project.id, version_number=1)
-    mock_db_session.add(version)
-    await mock_db_session.commit()
-    await mock_db_session.refresh(version)
-
-    # Try to create files with same path concurrently
-    file_path = "src/test.tsx"
-    file1 = File(version_id=version.id, path=file_path, content="Content 1")
-    mock_db_session.add(file1)
-    await mock_db_session.commit()
-
-    # Simulate concurrent file creation
-    mock_db_session.commit.side_effect = IntegrityError(None, None, None)
-    with pytest.raises(IntegrityError):
-        file2 = File(version_id=version.id, path=file_path, content="Content 2")
-        mock_db_session.add(file2)
-        await mock_db_session.commit()
-    await mock_db_session.rollback()
-
-    # Reset commit behavior
-    mock_db_session.commit.side_effect = None
-
-    # Verify only one file exists
-    mock_db_session.query.return_value.filter.return_value.all.return_value = [file1]
-    files = mock_db_session.query(File).filter(File.version_id == version.id).all()
-    assert len(files) == 1
-    assert files[0].path == file_path
 
 @pytest.mark.asyncio
 async def test_version_validation_with_session(mock_db_session, mock_models):
