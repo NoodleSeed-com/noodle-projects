@@ -33,7 +33,6 @@
 3. Test Categories:
    - Unit tests with source code
    - Integration tests in api/tests/
-   - Common utilities in api/tests/common/
 
 4. Test Documentation:
    - Clear docstrings
@@ -377,8 +376,7 @@ pip install -r api/requirements.txt
 │   │       └── tests/      # Service tests
 │   ├── tests/              # Integration tests
 │   │   ├── __init__.py
-│   │   ├── integration_tests/
-│   │   └── common/
+│   │   └── integration_tests/
 │   ├── requirements.txt
 │   └── README.md
 ├── supabase/               # Database
