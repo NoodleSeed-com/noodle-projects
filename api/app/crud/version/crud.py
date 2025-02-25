@@ -174,6 +174,34 @@ class VersionCRUD:
                 for id, number, name in rows]
 
     @staticmethod
+    async def create_version(
+        db: AsyncSession,
+        project_id: UUID,
+        parent_version_number: int,
+        name: str,
+        changes: List[FileChange]
+    ) -> Optional[VersionResponse]:
+        """Create a new version based on a parent version and apply changes.
+        
+        This is an alias for the create() method to maintain consistency with route naming.
+        
+        Args:
+            db: Database session
+            project_id: Project UUID
+            parent_version_number: Version number to base the new version on
+            name: Name for the new version
+            changes: List of file changes to apply
+            
+        Returns:
+            New version with applied changes, or None if parent version not found
+            
+        Raises:
+            ValueError: If file operations are invalid
+            sqlalchemy.exc.IntegrityError: If version number conflict occurs
+        """
+        return await VersionCRUD.create(db, project_id, parent_version_number, name, changes)
+        
+    @staticmethod
     async def create(
         db: AsyncSession,
         project_id: UUID,
