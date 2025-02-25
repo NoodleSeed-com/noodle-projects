@@ -11,9 +11,56 @@ from ...schemas.version import VersionResponse, VersionListItem
 from ...schemas.file import FileResponse
 from ...schemas.common import FileChange
 from .file_operations import validate_file_changes, apply_file_changes
+from .template import create_initial_version
 
 class VersionCRUD:
     """CRUD operations for versions"""
+    
+    @staticmethod
+    async def create_initial_version(db: AsyncSession, project_id: UUID) -> Version:
+        """Create version 0 with template files for a new project.
+        
+        Args:
+            db: Database session
+            project_id: Project UUID
+            
+        Returns:
+            Created initial version
+        """
+        return await create_initial_version(db, project_id)
+    
+    @staticmethod
+    async def get_version(db: AsyncSession, project_id: UUID, version_number: int) -> Optional[VersionResponse]:
+        """Get a specific version of a project.
+        
+        This is an alias for the get() method to maintain consistency with route naming.
+        
+        Args:
+            db: Database session
+            project_id: Project UUID
+            version_number: Version number
+            
+        Returns:
+            Version response or None if not found
+        """
+        return await VersionCRUD.get(db, project_id, version_number)
+    
+    @staticmethod
+    async def get_versions(db: AsyncSession, project_id: UUID, skip: int = 0, limit: int = 100) -> List[VersionListItem]:
+        """Get all versions of a project.
+        
+        This is an alias for the get_multi() method to maintain consistency with route naming.
+        
+        Args:
+            db: Database session
+            project_id: Project UUID
+            skip: Number of versions to skip
+            limit: Maximum number of versions to return
+            
+        Returns:
+            List of version list items
+        """
+        return await VersionCRUD.get_multi(db, project_id, skip, limit)
     
     @staticmethod
     async def get_next_number(db: AsyncSession, project_id: UUID) -> int:

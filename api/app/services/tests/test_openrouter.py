@@ -1,35 +1,39 @@
 """Tests for OpenRouter service."""
 import pytest
-from unittest.mock import Mock, patch, MagicMock, mock_open
+from unittest.mock import Mock, patch, MagicMock, mock_open, AsyncMock
 from pathlib import Path
-from openai import OpenAI, OpenAIError, APITimeoutError, RateLimitError
+from openai import AsyncOpenAI, OpenAIError, APITimeoutError, RateLimitError
 from ...services.openrouter import OpenRouterService, _read_prompt_file
 from ...schemas.file import FileResponse
 from ...schemas.common import FileChange, AIResponse
 
-def test_get_file_changes_with_none_client():
+@pytest.mark.asyncio
+async def test_get_file_changes_with_none_client():
     """Test get_file_changes when client is None."""
     # Create a mock client that returns None
-    mock_client = Mock()
+    mock_client = AsyncMock()
     mock_client.chat = None
     service = OpenRouterService(client=mock_client)
-    changes = service.get_file_changes("test", "test", [])
+    changes = await service.get_file_changes("test", "test", [])
     assert changes == []
 
 def test_service_with_custom_client():
     """Test service initialization with custom client."""
-    mock_client = Mock()
+    mock_client = AsyncMock()
     service = OpenRouterService(client=mock_client)
     assert service.client == mock_client
+    assert service._client_initialized == True
 
-@patch('app.services.openrouter.OpenAI')
-def test_service_client_creation(mock_openai_class):
-    """Test OpenAI client creation with correct configuration."""
-    mock_client = Mock()
+@pytest.mark.asyncio
+@patch('app.services.openrouter.AsyncOpenAI')
+async def test_service_client_creation(mock_openai_class):
+    """Test AsyncOpenAI client creation with correct configuration."""
+    mock_client = AsyncMock()
     mock_openai_class.return_value = mock_client
 
     with patch.dict('os.environ', {'OPENROUTER_API_KEY': 'test-key'}):
         service = OpenRouterService()
+        await service._ensure_client()
         
     assert service.client == mock_client
     mock_openai_class.assert_called_once_with(
@@ -41,13 +45,16 @@ def test_service_client_creation(mock_openai_class):
         }
     )
 
-def test_service_missing_api_key():
+@pytest.mark.asyncio
+async def test_service_missing_api_key():
     """Test service creation without API key."""
     with patch.dict('os.environ', clear=True):
+        service = OpenRouterService()
         with pytest.raises(ValueError, match="OPENROUTER_API_KEY environment variable is required"):
-            OpenRouterService()
+            await service._ensure_client()
 
-def test_get_file_changes_success():
+@pytest.mark.asyncio
+async def test_get_file_changes_success():
     """Test successful file changes request."""
     # Setup mock client and response
     mock_completion = MagicMock()
@@ -59,7 +66,7 @@ def test_get_file_changes_success():
         )
     ]
     
-    mock_client = Mock()
+    mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = mock_completion
     
     service = OpenRouterService(client=mock_client)
@@ -76,7 +83,7 @@ def test_get_file_changes_success():
     ]
     
     # Execute and verify
-    changes = service.get_file_changes(project_context, change_request, current_files)
+    changes = await service.get_file_changes(project_context, change_request, current_files)
     
     assert len(changes) == 1
     assert changes[0].path == "test.txt"
@@ -91,7 +98,8 @@ def test_get_file_changes_success():
     assert call_args["messages"][0]["role"] == "system"
     assert call_args["messages"][1]["role"] == "user"
 
-def test_get_file_changes_multiple_operations():
+@pytest.mark.asyncio
+async def test_get_file_changes_multiple_operations():
     """Test file changes with multiple operations to ensure return value is properly handled."""
     # Setup mock client with multiple changes
     mock_completion = MagicMock()
@@ -111,13 +119,13 @@ def test_get_file_changes_multiple_operations():
         )
     ]
     
-    mock_client = Mock()
+    mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = mock_completion
     
     service = OpenRouterService(client=mock_client)
     
     # Execute
-    changes = service.get_file_changes("test", "test", [])
+    changes = await service.get_file_changes("test", "test", [])
     
     # Verify all changes are returned correctly
     assert len(changes) == 3
@@ -137,8 +145,9 @@ def test_get_file_changes_multiple_operations():
     assert changes[2].path == "to-delete.txt"
     assert changes[2].content == ""
 
+@pytest.mark.asyncio
 @patch('app.services.openrouter.AIResponse')
-def test_get_file_changes_return_value(mock_ai_response_class):
+async def test_get_file_changes_return_value(mock_ai_response_class):
     """Test that get_file_changes returns the changes from AIResponse."""
     # Setup mock response
     mock_changes = [
@@ -162,13 +171,13 @@ def test_get_file_changes_return_value(mock_ai_response_class):
         )
     ]
     
-    mock_client = Mock()
+    mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = mock_completion
     
     service = OpenRouterService(client=mock_client)
     
     # Execute
-    result = service.get_file_changes("test", "test", [])
+    result = await service.get_file_changes("test", "test", [])
     
     # Verify AIResponse.model_validate_json was called
     mock_ai_response_class.model_validate_json.assert_called_once()
@@ -176,7 +185,8 @@ def test_get_file_changes_return_value(mock_ai_response_class):
     # Verify the result is exactly the changes from our mock AIResponse
     assert result is mock_changes
 
-def test_invalid_ai_response_missing_tags():
+@pytest.mark.asyncio
+async def test_invalid_ai_response_missing_tags():
     """Test handling of AI response missing noodle_response tags."""
     mock_completion = MagicMock()
     mock_completion.choices = [
@@ -187,15 +197,16 @@ def test_invalid_ai_response_missing_tags():
         )
     ]
     
-    mock_client = Mock()
+    mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = mock_completion
     
     service = OpenRouterService(client=mock_client)
     
     with pytest.raises(ValueError, match="AI response missing noodle_response tags"):
-        service.get_file_changes("test", "test", [])
+        await service.get_file_changes("test", "test", [])
 
-def test_invalid_ai_response_invalid_json():
+@pytest.mark.asyncio
+async def test_invalid_ai_response_invalid_json():
     """Test handling of invalid JSON in AI response."""
     mock_completion = MagicMock()
     mock_completion.choices = [
@@ -206,16 +217,17 @@ def test_invalid_ai_response_invalid_json():
         )
     ]
     
-    mock_client = Mock()
+    mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = mock_completion
     
     service = OpenRouterService(client=mock_client)
     
     with pytest.raises(Exception) as exc_info:
-        service.get_file_changes("test", "test", [])
+        await service.get_file_changes("test", "test", [])
     assert "validation error" in str(exc_info.value).lower()
 
-def test_duplicate_file_paths():
+@pytest.mark.asyncio
+async def test_duplicate_file_paths():
     """Test handling of duplicate file paths in changes."""
     mock_completion = MagicMock()
     mock_completion.choices = [
@@ -233,35 +245,38 @@ def test_duplicate_file_paths():
         )
     ]
     
-    mock_client = Mock()
+    mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = mock_completion
     
     service = OpenRouterService(client=mock_client)
     
     with pytest.raises(ValueError, match="Duplicate file paths found in changes"):
-        service.get_file_changes("test", "test", [])
+        await service.get_file_changes("test", "test", [])
 
-def test_openai_api_error():
+@pytest.mark.asyncio
+async def test_openai_api_error():
     """Test handling of OpenAI API errors."""
-    mock_client = Mock()
+    mock_client = AsyncMock()
     mock_client.chat.completions.create.side_effect = OpenAIError("API Error")
     
     service = OpenRouterService(client=mock_client)
     
     with pytest.raises(OpenAIError, match="API Error"):
-        service.get_file_changes("test", "test", [])
+        await service.get_file_changes("test", "test", [])
 
-def test_openai_timeout():
+@pytest.mark.asyncio
+async def test_openai_timeout():
     """Test handling of API timeouts."""
-    mock_client = Mock()
+    mock_client = AsyncMock()
     mock_client.chat.completions.create.side_effect = APITimeoutError("Request timed out")
     
     service = OpenRouterService(client=mock_client)
     
     with pytest.raises(APITimeoutError, match="timed out"):
-        service.get_file_changes("test", "test", [])
+        await service.get_file_changes("test", "test", [])
 
-def test_rate_limit_error():
+@pytest.mark.asyncio
+async def test_rate_limit_error():
     """Test handling of rate limit errors."""
     mock_response = MagicMock()
     mock_response.status_code = 429
@@ -274,7 +289,7 @@ def test_rate_limit_error():
         }
     }
     
-    mock_client = Mock()
+    mock_client = AsyncMock()
     mock_client.chat.completions.create.side_effect = RateLimitError(
         message="Rate limit exceeded",
         response=mock_response,
@@ -284,22 +299,24 @@ def test_rate_limit_error():
     service = OpenRouterService(client=mock_client)
     
     with pytest.raises(RateLimitError, match="Rate limit"):
-        service.get_file_changes("test", "test", [])
+        await service.get_file_changes("test", "test", [])
 
-def test_empty_response():
+@pytest.mark.asyncio
+async def test_empty_response():
     """Test handling of empty response from OpenAI."""
     mock_completion = MagicMock()
     mock_completion.choices = []
     
-    mock_client = Mock()
+    mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = mock_completion
     
     service = OpenRouterService(client=mock_client)
     
     with pytest.raises(IndexError):
-        service.get_file_changes("test", "test", [])
+        await service.get_file_changes("test", "test", [])
 
-def test_missing_message_in_choice():
+@pytest.mark.asyncio
+async def test_missing_message_in_choice():
     """Test handling of missing message in choice."""
     mock_choice = MagicMock()
     del mock_choice.message
@@ -307,13 +324,13 @@ def test_missing_message_in_choice():
     mock_completion = MagicMock()
     mock_completion.choices = [mock_choice]
     
-    mock_client = Mock()
+    mock_client = AsyncMock()
     mock_client.chat.completions.create.return_value = mock_completion
     
     service = OpenRouterService(client=mock_client)
     
     with pytest.raises(AttributeError):
-        service.get_file_changes("test", "test", [])
+        await service.get_file_changes("test", "test", [])
 
 def test_missing_prompt_file():
     """Test handling of missing prompt file."""
@@ -326,10 +343,11 @@ def test_read_prompt_file():
         content = _read_prompt_file("test.md")
         assert content == "test content"
 
-def test_get_openrouter():
+@pytest.mark.asyncio
+async def test_get_openrouter():
     """Test get_openrouter dependency function."""
     from ...services.openrouter import get_openrouter
     
     # Verify the function returns an instance of OpenRouterService
-    service = get_openrouter()
+    service = await get_openrouter()
     assert isinstance(service, OpenRouterService)

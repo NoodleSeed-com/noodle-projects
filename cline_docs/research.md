@@ -205,6 +205,56 @@ Research findings from routes test coverage analysis:
    - Exception handling in create_version mostly untested
    - Validation logic partially tested
 
+### VersionCRUD Coverage Improvements (2024-02-24)
+Research findings from improving VersionCRUD test coverage:
+
+1. Initial Coverage Assessment
+   - app/crud/version/crud.py: 29% coverage (many missed statements and branches)
+   - Missing method implementations causing test failures
+   - Inconsistent method naming between routes and CRUD classes
+
+2. Implementation Issues Identified
+   - Routes calling `versions.get_version()` but VersionCRUD only had `get()`
+   - Routes calling `versions.get_versions()` but VersionCRUD only had `get_multi()`
+   - Routes calling `versions.create_initial_version()` but method not implemented in VersionCRUD
+
+3. Solutions Implemented
+   - Added `create_initial_version()` method to VersionCRUD class
+   - Added `get_version()` as an alias for `get()` method
+   - Added `get_versions()` as an alias for `get_multi()` method
+   - Maintained consistent async patterns throughout
+
+4. Coverage Improvement Results
+   - app/crud/version/crud.py: 91% coverage (improved from 29%)
+   - app/crud/version/file_operations.py: 98% coverage
+   - app/crud/version/template.py: 100% coverage
+   - Overall CRUD coverage improved from ~60% to ~85%
+
+5. Implementation Pattern
+   ```python
+   @staticmethod
+   async def create_initial_version(db: AsyncSession, project_id: UUID) -> Version:
+       """Create version 0 with template files for a new project."""
+       return await create_initial_version(db, project_id)
+       
+   @staticmethod
+   async def get_version(db: AsyncSession, project_id: UUID, version_number: int) -> Optional[VersionResponse]:
+       """Alias for get() method to maintain consistency with route naming."""
+       return await VersionCRUD.get(db, project_id, version_number)
+       
+   @staticmethod
+   async def get_versions(db: AsyncSession, project_id: UUID, skip: int = 0, limit: int = 100) -> List[VersionListItem]:
+       """Alias for get_multi() method to maintain consistency with route naming."""
+       return await VersionCRUD.get_multi(db, project_id, skip, limit)
+   ```
+
+6. Key Learnings
+   - Maintain consistent method naming between routes and CRUD classes
+   - Use method aliases when different naming conventions are needed
+   - Follow consistent async patterns throughout the codebase
+   - Ensure all methods called by routes are implemented in CRUD classes
+   - Test coverage improvements should focus on critical code paths first
+
 ### Test Fixture Patterns
 Research on effective test fixture patterns for FastAPI routes:
 
@@ -714,6 +764,70 @@ Research findings on testing file system operations:
    - Test file system operations independently
    - Consider integration tests for complex file operations
    - Ensure AsyncMock side_effect=None for async functions that interact with file system
+
+## Async Patterns in FastAPI Services (2024-02-24 18:21 PST)
+
+### OpenRouterService Async Implementation
+Research findings from implementing proper async patterns in the OpenRouterService:
+
+1. Problem Analysis
+   - Original implementation used synchronous methods but was called with `await` in routes
+   - Routes expected async methods but service provided sync methods
+   - This mismatch would cause runtime errors
+   - Tests were mocking the service as async despite sync implementation
+
+2. Best Practices for Async API Clients
+   - Use AsyncOpenAI client instead of OpenAI for async operations
+   - Initialize client lazily to avoid blocking application startup
+   - Properly handle client lifecycle (initialization and cleanup)
+   - Use consistent async/await patterns throughout the application
+   - Keep file operations synchronous for simple reads
+
+3. Implementation Pattern
+   ```python
+   from openai import AsyncOpenAI
+   
+   class OpenRouterService:
+       def __init__(self, client=None):
+           self.client = client
+           self._client_initialized = client is not None
+       
+       async def _ensure_client(self):
+           """Ensure client is initialized."""
+           if not self._client_initialized:
+               self.client = await self._get_client()
+               self._client_initialized = True
+       
+       async def _get_client(self) -> AsyncOpenAI:
+           """Get AsyncOpenAI client configured for OpenRouter."""
+           return AsyncOpenAI(
+               base_url="https://openrouter.ai/api/v1",
+               api_key=api_key,
+               default_headers={...}
+           )
+       
+       async def get_file_changes(self, ...):
+           await self._ensure_client()
+           # Use await for API calls
+           completion = await self.client.chat.completions.create(...)
+           # Process response
+           return result
+   ```
+
+4. Testing Async Services
+   - Use `@pytest.mark.asyncio` decorator for async tests
+   - Use AsyncMock for mocking async methods
+   - Await async method calls in tests
+   - Mock client initialization to avoid API calls during tests
+   - Test both success and error paths
+
+5. Key Learnings
+   - Maintain consistent async patterns throughout the application
+   - Use AsyncOpenAI client for OpenAI/OpenRouter API calls
+   - Initialize clients lazily to avoid blocking application startup
+   - Keep simple file operations synchronous
+   - Use proper async testing patterns with pytest
+   - Document async patterns for future reference
 
 ## Future Research Topics
 

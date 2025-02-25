@@ -3,12 +3,16 @@ import os
 import re
 from pathlib import Path
 from typing import List
-from openai import OpenAI
+from openai import AsyncOpenAI
 from ..schemas.common import FileChange, AIResponse
 from ..schemas.file import FileResponse
 
 def _read_prompt_file(filename: str) -> str:
-    """Read prompt content from a file."""
+    """Read prompt content from a file.
+    
+    This is a synchronous function since it's a simple file read operation
+    that doesn't benefit significantly from async I/O.
+    """
     prompt_path = Path(__file__).parent / "prompts" / filename
     with open(prompt_path, "r") as f:
         return f.read().strip()
@@ -18,15 +22,22 @@ class OpenRouterService:
     
     def __init__(self, client=None):
         """Initialize the OpenRouter service."""
-        self.client = client or self._get_client()
+        self.client = client
+        self._client_initialized = client is not None
     
-    def _get_client(self) -> OpenAI:
-        """Get OpenAI client configured for OpenRouter."""
+    async def _ensure_client(self):
+        """Ensure client is initialized."""
+        if not self._client_initialized:
+            self.client = await self._get_client()
+            self._client_initialized = True
+    
+    async def _get_client(self) -> AsyncOpenAI:
+        """Get AsyncOpenAI client configured for OpenRouter."""
         api_key = os.getenv("OPENROUTER_API_KEY")
         if not api_key:
             raise ValueError("OPENROUTER_API_KEY environment variable is required")
             
-        return OpenAI(
+        return AsyncOpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=api_key,
             default_headers={
@@ -35,7 +46,7 @@ class OpenRouterService:
             }
         )
     
-    def get_file_changes(
+    async def get_file_changes(
         self,
         project_context: str,
         change_request: str,
@@ -54,6 +65,8 @@ class OpenRouterService:
         Raises:
             ValueError: If AI response is invalid or contains duplicate paths
         """
+        await self._ensure_client()
+        
         if self.client is None or self.client.chat is None:
             # During testing, we still validate the mock data
             # Note: In testing mode, the mock data is injected by the test
@@ -73,7 +86,7 @@ class OpenRouterService:
             change_request=change_request
         )
         
-        completion = self.client.chat.completions.create(
+        completion = await self.client.chat.completions.create(
             model="google/gemini-2.0-flash-001",  # Using Gemini 2.0 Flash for testing
             messages=[
                 {"role": "system", "content": system_message},
@@ -97,6 +110,6 @@ class OpenRouterService:
         
         return ai_response.changes
 
-def get_openrouter():
+async def get_openrouter():
     """Dependency to get OpenRouter service."""
     return OpenRouterService()

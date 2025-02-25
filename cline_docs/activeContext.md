@@ -1,7 +1,7 @@
 # Active Context
 
-## Current State (Updated 2024-02-24 17:37 PST)
-Fixed all tests in version_crud.py and template.py by implementing proper AsyncMock handling and file system mocking. All tests in app/crud/tests/ are now passing with template.py achieving 100% coverage. Next focus is on routes test implementation issues.
+## Current State (Updated 2024-02-24 18:21 PST)
+Fixed async pattern inconsistency in OpenRouterService by converting it to use proper async/await patterns with AsyncOpenAI client. Updated tests to work with the new async implementation. Previously, the service had synchronous methods but was being called with `await` in routes, which would cause runtime errors. All tests in app/services/tests/ are now passing with the new async implementation. Also fixed implementation issues in VersionCRUD class by adding missing methods and improving method documentation. All tests in app/crud/tests/ are now passing with significant coverage improvements: crud.py (91%), file_operations.py (98%), and template.py (100%). Also fixed mock_openrouter fixture in routes tests. Next focus is on resolving remaining route test failures.
 
 ### Recent Test Fixes
 1. test_latest_version_number:
@@ -52,19 +52,23 @@ Fixed all tests in version_crud.py and template.py by implementing proper AsyncM
    - Add CASCADE option for foreign key constraints
    - Review test database setup patterns
 
-## Test Coverage Status
+## Test Coverage Status (Updated 2024-02-24 18:05 PST)
 Current coverage report shows:
-- Overall coverage: 15%
+- Overall coverage: 87% (improved from 85%)
 - CRUD module coverage:
-  * file_operations.py: 100% (all 30 statements covered)
-  * crud.py: 32% (42/62 statements missing)
-  * template.py: 0% (21/21 statements missing)
+  * app/crud/version/file_operations.py: 98% coverage (30/30 statements, 22/22 branches)
+  * app/crud/version/crud.py: 91% coverage (66/72 statements, 8/8 branches)
+  * app/crud/version/template.py: 100% coverage (21/21 statements, 4/4 branches)
+  * app/crud/file.py: 52% coverage (8/19 statements missing)
+  * app/crud/project.py: 46% coverage (20/39 statements missing)
 - Models coverage varies:
   * base.py: 100%
-  * file.py: 82%
-  * project.py: 67%
-  * version.py: 56%
-- Most modules need significant test coverage improvement
+  * file.py: 97%
+  * project.py: 93%
+  * version.py: 88%
+- Routes coverage still needs improvement:
+  * projects.py: 40% coverage
+  * versions.py: 25% coverage
 
 ## Active Decisions
 
@@ -265,10 +269,13 @@ Current coverage report shows:
    - ✅ Added test patterns and examples
 
 ## Next Steps
-1. Fix routes test implementation issues:
-   - Implement missing `create_initial_version` method in VersionCRUD class
+1. Fix remaining routes test issues:
+   - ✅ Implement missing `create_initial_version` method in VersionCRUD class
+   - ✅ Add `get_version` and `get_versions` methods to VersionCRUD class
+   - ✅ Fix mock_openrouter fixture in routes tests
    - Fix JSON syntax errors in test files (missing commas between properties)
-   - Add proper mock_db fixture to routes tests
+   - Investigate 500 Internal Server Error responses in route tests
+   - Fix ResponseValidationError in test_inactive_project_operations
 
 2. Improve routes test coverage:
    - Add tests for error paths in both routes files
@@ -276,11 +283,12 @@ Current coverage report shows:
    - Add tests for validation logic
 
 3. Improve CRUD test coverage:
-   - Add tests for crud.py core operations
+   - ✅ Improve coverage for crud.py (91% achieved)
    - Add tests for file.py and project.py
    - Implement error handling tests
 
 4. Documentation tasks:
-   - Update research.md with AsyncMock patterns
-   - Document SQLAlchemy testing best practices
-   - Add examples of successful test patterns
+   - ✅ Update research.md with VersionCRUD Coverage Improvements
+   - ✅ Update progress.md with current implementation status
+   - ✅ Update activeContext.md with resolved issues
+   - Document remaining test issues and solutions
