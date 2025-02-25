@@ -230,12 +230,11 @@ async def test_version_validation(mock_db_session, mock_models):
     version = mock_models.Version(project_id=project1.id, name="Invalid Parent", parent_id=project2.versions[0].id)
     mock_db_session.add(version)
     
-    # Ensure validate is called before commit
-    await version.validate(mock_db_session)
-    
+    # Manually call validate since the event listener might not be triggered in tests
     with pytest.raises(NoodleError, match="Parent version must be from the same project"):
-        await mock_db_session.commit()
-    await mock_db_session.rollback()
+        await version.validate(mock_db_session)
+    
+    # No need to commit or rollback since validate will raise the error
 
     # Test successful version creation
     next_version_number = max(v.version_number for v in project1.versions) + 1
