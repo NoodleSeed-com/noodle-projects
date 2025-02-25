@@ -85,6 +85,121 @@ Benefits:
    - No cross-test pollution
    - Fast execution
 
+### FastAPI Testing Best Practices
+
+1. Use a Separate Test Database
+   - In-memory SQLite database for fast tests
+   - Proper transaction isolation for test independence
+   - Database setup and teardown for each test
+   ```python
+   # Use an in-memory SQLite database for testing
+   TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+   engine = create_async_engine(TEST_DATABASE_URL, echo=True)
+   TestingSessionLocal = sessionmaker(
+       engine, class_=AsyncSession, expire_on_commit=False
+   )
+   ```
+
+2. Dependency Injection
+   - Override dependencies for testing
+   - Use test-specific database session
+   - Clear overrides after tests
+   ```python
+   @pytest.fixture
+   def client(db_session):
+       """Test client with test database session."""
+       async def override_get_db():
+           yield db_session
+   
+       app.dependency_overrides[get_db] = override_get_db
+       with TestClient(app) as client:
+           yield client
+       app.dependency_overrides.clear()
+   ```
+
+3. Async Testing
+   - Use pytest-asyncio for async tests
+   - Add @pytest.mark.asyncio decorator to test functions
+   - Properly await async operations
+   ```python
+   @pytest.mark.asyncio
+   async def test_create_project(client, db_session):
+       """Test creating a project."""
+       response = client.post(
+           "/api/projects/",
+           json={
+               "name": "Test Project",
+               "description": "Test Description"
+           }
+       )
+       assert response.status_code == 201
+       project = response.json()
+       assert project["name"] == "Test Project"
+   ```
+
+4. Transaction Isolation
+   - Use transactions for test isolation
+   - Rollback after each test
+   - Avoid test interdependence
+   ```python
+   @pytest.fixture
+   async def db_session(setup_database):
+       """Create a test database session with transaction isolation."""
+       connection = await engine.connect()
+       transaction = await connection.begin()
+       session = TestingSessionLocal(bind=connection)
+       
+       try:
+           yield session
+       finally:
+           await session.close()
+           await transaction.rollback()
+           await connection.close()
+   ```
+
+### AsyncMock and SQLAlchemy Testing Patterns
+
+1. AsyncMock Coroutine Handling
+   - AsyncMock returns coroutines that must be awaited
+   - Set side_effect = None to prevent coroutine behavior
+   - Use MagicMock for query results
+   ```python
+   # Configure AsyncMock to not return coroutines
+   mock_db_session.execute = AsyncMock()
+   mock_db_session.execute.side_effect = None
+   
+   # Use MagicMock for query results
+   result = MagicMock()
+   result.scalar_one.return_value = True
+   mock_db_session.execute.return_value = result
+   ```
+
+2. Sequence-Based Mocking for Multiple Queries
+   - Use side_effect as a list for sequential calls
+   - Create separate mock results for each query
+   ```python
+   # Create mock results for each query
+   version_result = MagicMock()
+   version_result.scalar_one_or_none.return_value = mock_version
+   
+   parent_result = MagicMock()
+   parent_result.scalar_one_or_none.return_value = 0
+   
+   # Set up the execute mock to return the results in sequence
+   mock_db_session.execute = AsyncMock()
+   mock_db_session.execute.side_effect = [
+       version_result,      # First call
+       parent_result,       # Second call
+   ]
+   ```
+
+3. Transaction Context Manager Mocking
+   ```python
+   # Mocking async context manager for transactions
+   mock_db_session.begin.return_value.__aenter__.return_value = mock_db_session
+   mock_db_session.begin.side_effect = None  # Prevent coroutine
+   ```
+
 ### Test Coverage Patterns
 
 1. Coverage Goals:
@@ -253,33 +368,7 @@ Benefits:
    TEST_NAME = "Test Project"
    ```
 
-## Lessons Learned
-
-1. Database Setup:
-   - Handle constraints properly
-   - Use transactions for isolation
-   - Clean up resources
-   - Maintain test independence
-
-2. Test Organization:
-   - Co-locate with source
-   - Clear ownership
-   - Focused scope
-   - Easy navigation
-
-3. Coverage Strategy:
-   - Start with models
-   - Add routes
-   - Cover services
-   - End-to-end last
-
-4. Documentation:
-   - Clear purpose
-   - Verification points
-   - Setup requirements
-   - Expected results
-
-### Routes Testing Patterns (Added 2024-02-24)
+### Routes Testing Patterns
 
 1. Test Client Setup:
    ```python
@@ -314,7 +403,6 @@ Benefits:
    - Success Cases: Test normal operation paths
    - Error Cases: Test validation and error handling
    - Edge Cases: Test boundary conditions
-   - Concurrent Cases: Test race conditions and concurrency
 
 4. JSON Request Patterns:
    ```python
@@ -342,41 +430,9 @@ Benefits:
    assert isinstance(error["detail"], str)
    ```
 
-6. Concurrent Testing Patterns:
-   ```python
-   def create_version(i: int):
-       return client.post(
-           f"/api/projects/{project_id}/versions",
-           json={
-               "name": f"Version {i}",
-               "parent_version_number": 0,
-               "project_context": "Test context",
-               "change_request": "Test request"
-           }
-       )
-   
-   responses = run_concurrent_requests(client, create_version, count=3, max_workers=3)
-   
-   # Verify unique version numbers
-   assert_unique_responses(responses, "version_number")
-   ```
+## SQLAlchemy Patterns
 
-7. Common Test Patterns:
-   - Test inactive project operations
-   - Test version validation
-   - Test file path constraints
-   - Test concurrent operations
-   - Test transaction rollback
-   - Test error responses
-
-8. Coverage Priorities:
-   - Error paths in both routes files
-   - Exception handling in create_version
-   - Validation logic
-   - Concurrent operations
-   - Transaction management
-
-### SQLAlchemy Testing Patterns
+### SQLAlchemy Session Management
 
 1. Session Management:
    ```python
@@ -442,7 +498,46 @@ Benefits:
    - Duplicate version numbers
    - Missing relationship loads
 
-### Version Management Patterns
+### Transaction Management
+
+1. Transaction Boundaries:
+   - Define clear transaction boundaries
+   - Use context managers for transactions
+   - Handle rollbacks on errors
+   - Example:
+   ```python
+   async with db.begin():
+       # Operations within transaction
+       db.add(model)
+       # Automatically commits or rolls back
+   ```
+
+2. Nested Transactions:
+   - Use savepoints for nested operations
+   - Roll back to savepoint on error
+   - Maintain outer transaction
+   - Example:
+   ```python
+   async with db.begin_nested():
+       # Operations that might fail
+       db.add(model)
+       # Rolls back to savepoint on error
+   ```
+
+3. Error Handling:
+   - Catch specific exceptions
+   - Roll back transaction on error
+   - Provide clear error messages
+   - Example:
+   ```python
+   try:
+       async with db.begin():
+           db.add(model)
+   except IntegrityError:
+       # Handle constraint violation
+   ```
+
+## Version Management Patterns
 
 1. Version Relationships:
    ```python
@@ -565,4 +660,3 @@ Benefits:
      
      for version in project.versions:
          assert version.active is False
-     ```

@@ -2,7 +2,7 @@
 from typing import List
 from uuid import UUID
 import sqlalchemy.exc
-from fastapi import APIRouter, Depends, HTTPException, Query, Path
+from fastapi import APIRouter, Depends, Query, Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_db
@@ -13,6 +13,7 @@ from ..schemas.version import (
     CreateVersionRequest
 )
 from ..services.openrouter import get_openrouter
+from ..errors import NoodleError, ErrorType
 
 router = APIRouter()
 
@@ -34,7 +35,7 @@ async def list_versions(
     """
     project = await projects.get(db, project_id)
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise NoodleError("Project not found", ErrorType.NOT_FOUND)
     return await versions.get_versions(db, project_id, skip=skip, limit=limit)
 
 @router.get(
@@ -55,11 +56,11 @@ async def get_version(
     """
     project = await projects.get(db, project_id)
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise NoodleError("Project not found", ErrorType.NOT_FOUND)
     
     version = await versions.get_version(db, project_id, version_number)
     if not version:
-        raise HTTPException(status_code=404, detail="Version not found")
+        raise NoodleError("Version not found", ErrorType.NOT_FOUND)
     return version
 
 @router.post("/", response_model=VersionResponse)
@@ -80,17 +81,17 @@ async def create_version(
     # Check if project exists and is active
     project = await projects.get(db, project_id)
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise NoodleError("Project not found", ErrorType.NOT_FOUND)
     if not project.active:
-        raise HTTPException(
-            status_code=403,
-            detail="Cannot create version for inactive project"
+        raise NoodleError(
+            "Cannot create version for inactive project",
+            ErrorType.PERMISSION
         )
     
     # Check if parent version exists
     parent_version = await versions.get_version(db, project_id, request.parent_version_number)
     if not parent_version:
-        raise HTTPException(status_code=404, detail="Parent version not found")
+        raise NoodleError("Parent version not found", ErrorType.NOT_FOUND)
     
     try:
         # Get changes from OpenRouter service
@@ -110,19 +111,19 @@ async def create_version(
         )
         
         if not new_version:
-            raise HTTPException(status_code=500, detail="Failed to create new version")
+            raise NoodleError("Failed to create new version", ErrorType.DATABASE)
         
         return new_version
         
     except ValueError as e:
         # Handle validation errors (empty paths, duplicate paths, etc.)
-        raise HTTPException(status_code=400, detail=str(e))
+        raise NoodleError(str(e), ErrorType.VALIDATION)
     except sqlalchemy.exc.IntegrityError as e:
         # Handle database constraint violations
-        raise HTTPException(status_code=409, detail=str(e))
+        raise NoodleError(str(e), ErrorType.VALIDATION)
     except sqlalchemy.exc.OperationalError as e:
         # Handle transaction/concurrency errors
-        raise HTTPException(status_code=503, detail=str(e))
+        raise NoodleError(str(e), ErrorType.DATABASE)
     except Exception as e:
         # Handle unexpected errors
-        raise HTTPException(status_code=500, detail=f"Error creating version: {str(e)}")
+        raise NoodleError(f"Error creating version: {str(e)}", ErrorType.DATABASE)

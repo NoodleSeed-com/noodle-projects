@@ -6,7 +6,8 @@ from ...schemas.common import FileOperation, FileChange
 from ...schemas.project import ProjectResponse
 from ...schemas.version import VersionResponse
 
-def test_inactive_project_operations(client: TestClient, mock_openrouter):
+@pytest.mark.asyncio
+async def test_inactive_project_operations(client: TestClient, mock_openrouter, db_session):
     """Test operations on inactive projects.
     
     Verifies:
@@ -15,15 +16,24 @@ def test_inactive_project_operations(client: TestClient, mock_openrouter):
     3. Cannot perform any write operations
     4. Proper error responses returned with correct structure
     """
-    # Create and deactivate a project
-    project = client.post("/api/projects/", json={
-        "name": "Inactive Project",
-        "description": "Test Description"
-    }).json()
+    # Create a project
+    project_response = client.post(
+        "/api/projects/", 
+        json={
+            "name": "Inactive Project",
+            "description": "Test Description"
+        }
+    )
+    assert project_response.status_code == 201
+    project = project_response.json()
     
+    # Deactivate the project
     delete_response = client.delete(f"/api/projects/{project['id']}")
     assert delete_response.status_code == 200
+    
+    # Get the inactive project ID
     inactive_project = delete_response.json()
+    assert inactive_project["active"] is False
     project_id = inactive_project["id"]
 
     # Test all write operations
@@ -59,7 +69,8 @@ def test_inactive_project_operations(client: TestClient, mock_openrouter):
         assert "inactive" in error["detail"].lower()
         assert isinstance(error["detail"], str)
 
-def test_inactive_version_operations(client: TestClient, mock_openrouter):
+@pytest.mark.asyncio
+async def test_inactive_version_operations(client: TestClient, mock_openrouter, db_session):
     """Test operations on versions of inactive projects.
     
     Verifies:
@@ -68,10 +79,15 @@ def test_inactive_version_operations(client: TestClient, mock_openrouter):
     3. Error responses have correct structure
     """
     # Create project with version
-    project = client.post("/api/projects/", json={
-        "name": "Project with Version",
-        "description": "Test Description"
-    }).json()
+    project_response = client.post(
+        "/api/projects/", 
+        json={
+            "name": "Project with Version",
+            "description": "Test Description"
+        }
+    )
+    assert project_response.status_code == 201
+    project = project_response.json()
 
     # Create version
     mock_openrouter.get_file_changes.return_value = [
@@ -81,6 +97,7 @@ def test_inactive_version_operations(client: TestClient, mock_openrouter):
             content="export const Feature = () => <div>Feature</div>"
         )
     ]
+
     version_response = client.post(
         f"/api/projects/{project['id']}/versions",
         json={
@@ -90,6 +107,7 @@ def test_inactive_version_operations(client: TestClient, mock_openrouter):
             "change_request": "Create feature"
         }
     )
+    
     assert version_response.status_code == 200
     version = version_response.json()
     project_id = project["id"]
@@ -129,7 +147,8 @@ def test_inactive_version_operations(client: TestClient, mock_openrouter):
     version = VersionResponse(**version_data)
     assert version.active is False
 
-def test_partial_version_creation_rollback(client: TestClient, mock_openrouter):
+@pytest.mark.asyncio
+async def test_partial_version_creation_rollback(client: TestClient, mock_openrouter, db_session):
     """Test transaction rollback on partial version creation failure.
     
     Verifies:
@@ -139,10 +158,13 @@ def test_partial_version_creation_rollback(client: TestClient, mock_openrouter):
     4. Error is properly reported
     """
     # Create test project
-    response = client.post("/api/projects/", json={
-        "name": "Test Project",
-        "description": "Testing rollback"
-    })
+    response = client.post(
+        "/api/projects/", 
+        json={
+            "name": "Test Project",
+            "description": "Testing rollback"
+        }
+    )
     assert response.status_code == 201
     project_id = response.json()["id"]
     

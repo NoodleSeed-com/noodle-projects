@@ -38,6 +38,74 @@
 -   **python-dotenv:** `python-dotenv`
 -   **openrouter-py:** OpenRouter API client
 
+## FastAPI Best Practices
+
+### Pydantic v2 Models
+1. Model Configuration
+   - Use `model_config` with `ConfigDict` instead of `Config` class
+   - Enable `from_attributes=True` for ORM compatibility
+   - Add JSON schema examples for better documentation
+
+2. Field Validation
+   - Use `Field()` for validation and metadata
+   - Provide descriptions for OpenAPI documentation
+   - Set appropriate default values
+
+3. Model Structure
+   - Create base models for shared attributes
+   - Use inheritance for request/response models
+   - Implement proper validation rules
+
+Example Implementation:
+```python
+class ProjectBase(BaseModel):
+    """Base model for project data"""
+    name: str = Field(..., description="The name of the project")
+    description: str = Field("", description="Project description")
+    
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
+            "example": {
+                "name": "My Project",
+                "description": "A sample project description"
+            }
+        }
+    )
+```
+
+### API Design Patterns
+1. Resource Naming
+   - Noun-based endpoints
+   - Clear hierarchy
+   - Consistent patterns
+   - Version in path
+
+2. Status Codes
+   - 200: Successful operations
+   - 201: Resource creation
+   - 404: Not found
+   - 400: Validation errors
+
+3. Query Parameters
+   - Pagination with skip/limit
+   - Optional filtering
+   - Default values
+   - Parameter validation
+
+### Error Handling
+1. Exception Types
+   - HTTP exceptions
+   - Database errors
+   - Validation errors
+   - Custom errors
+
+2. Response Format
+   - Consistent structure
+   - Clear messages
+   - Proper status codes
+   - Additional context
+
 ## Validation Constraints
 
 ### File Path Validation
@@ -72,6 +140,34 @@
    - Automatic validation of version number format
    - Returns 422 for invalid version numbers
    - Consistent error handling across endpoints
+
+## Database Design Decisions
+
+### Version Management
+1. Version Numbering
+   - Sequential within project scope
+   - Tracked at project level
+   - No gaps in numbering
+   - Parent-child relationships
+
+2. Storage Strategy
+   - Files linked to specific versions
+   - No direct file manipulation
+   - Path uniqueness per version
+   - Content stored as text
+
+### Indexing Strategy
+Based on common query patterns:
+
+1. Primary Lookups
+   - Project by ID
+   - Version by project and number
+   - Files by version and path
+
+2. Performance Optimization
+   - Composite index on version lookup
+   - Index on foreign keys
+   - Unique constraints as indexes
 
 ## CORS Configuration
 
@@ -125,6 +221,50 @@
 - Override dependencies in tests
 - Verify service calls with flexible assertions
 - Clear mock overrides after tests
+
+### OpenRouter Integration with Gemini
+1. Response Structure
+   - Responses consistently wrapped in `<noodle_response>` tags
+   - Valid JSON structure within tags
+   - Proper escaping of code content
+   ```json
+   <noodle_response>
+   {"changes": [{
+     "operation": "create",
+     "path": "src/components/Button.tsx",
+     "content": "import React from 'react';\n..."
+   }]}
+   </noodle_response>
+   ```
+
+2. Code Generation Capabilities
+   - Accurate TypeScript type definitions
+   - Modern React patterns (functional components, hooks)
+   - Styled-components implementation
+   - Accessibility considerations
+   - Proper component exports
+
+3. Model Selection
+   - google/gemini-2.0-flash-001 suitable for code generation
+   - Fast response times
+   - Consistent formatting
+   - Follows provided templates
+
+4. Integration Patterns
+   - Environment-based configuration
+   - Proper error handling
+   - Response validation
+   - Content parsing
+   - Testing considerations
+
+5. Key Learnings
+   - Always verify `<noodle_response>` tags presence
+   - Validate JSON structure
+   - Check required fields (operation, path, content)
+   - Verify operation values (create, update, delete)
+   - Handle missing API keys gracefully
+   - Parse JSON safely
+   - Provide clear error messages
 
 ## Version 0 Template System
 

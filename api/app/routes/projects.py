@@ -1,12 +1,13 @@
 """Project-specific route handlers."""
 from typing import List
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..config import get_db
 from ..crud import projects, versions
 from ..schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse
+from ..errors import NoodleError, ErrorType
 
 router = APIRouter()
 
@@ -41,7 +42,7 @@ async def get_project(
     """Get a specific project by ID."""
     project = await projects.get(db, project_id)
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise NoodleError("Project not found", ErrorType.NOT_FOUND)
     return project
 
 @router.put("/{project_id}", response_model=ProjectResponse)
@@ -54,13 +55,13 @@ async def update_project(
     # Get existing project
     existing = await projects.get(db, project_id)
     if not existing:
-        raise HTTPException(status_code=404, detail="Project not found")
+        raise NoodleError("Project not found", ErrorType.NOT_FOUND)
     
     # Allow updates if project is active or if we're reactivating
     if not existing.active and (project.active is None or not project.active):
-        raise HTTPException(
-            status_code=403,
-            detail="Cannot modify inactive project. Reactivate the project first."
+        raise NoodleError(
+            "Cannot modify inactive project. Reactivate the project first.",
+            ErrorType.PERMISSION
         )
     
     db_project = await projects.update(db, project_id, project)
@@ -71,8 +72,26 @@ async def delete_project(
     project_id: UUID,
     db: AsyncSession = Depends(get_db)
 ):
-    """Soft delete a project."""
-    project = await projects.delete(db, project_id)
+    """Soft delete a project by setting active=False.
+    
+    This prevents further modifications to the project while still allowing read access.
+    All versions associated with the project will also be considered inactive.
+    """
+    # Check if project exists
+    project = await projects.get(db, project_id)
     if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return project
+        raise NoodleError("Project not found", ErrorType.NOT_FOUND)
+    
+    # Check if already inactive
+    # Handle both Project objects and dictionaries
+    if isinstance(project, dict):
+        is_active = project.get('active', True)
+    else:
+        is_active = getattr(project, 'active', True)
+    
+    if not is_active:
+        # Already inactive, just return it
+        return project
+    
+    # Perform the soft delete
+    return await projects.delete(db, project_id)

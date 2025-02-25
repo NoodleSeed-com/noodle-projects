@@ -2,108 +2,50 @@
 import pytest
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, AsyncMock
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 from uuid import uuid4
+
 from ...main import app
+from ...models.base import Base
 from ...services.openrouter import get_openrouter
 from ...config import get_db
 from ...models.project import Project
 from ...models.version import Version
 from ...models.file import File
+from ...schemas.project import ProjectCreate
+from ...crud import projects, versions
 
-@pytest.fixture(scope="module")
-def mock_project():
-    """Mock Project instance for testing."""
-    project = Project(
-        id=uuid4(),
+# Use an in-memory SQLite database for testing
+TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
+engine = create_async_engine(TEST_DATABASE_URL, echo=True)
+TestingSessionLocal = sessionmaker(
+    engine, class_=AsyncSession, expire_on_commit=False
+)
+
+@pytest.fixture
+async def setup_database():
+    """Set up the test database."""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+
+@pytest.fixture
+async def db_session(setup_database):
+    """Create a test database session."""
+    async with TestingSessionLocal() as session:
+        yield session
+
+@pytest.fixture
+def test_project():
+    """Create a test project object."""
+    return ProjectCreate(
         name="Test Project",
-        description="Test Description",
-        active=True,
-        created_at=datetime.now(),
-        updated_at=datetime.now()
+        description="Test Description"
     )
-    project.versions = []  # Initialize empty versions list
-    return project
-
-@pytest.fixture(scope="module")
-def mock_version(mock_project):
-    """Mock Version instance for testing."""
-    version_id = uuid4()
-    version = Version(
-        id=version_id,
-        project_id=mock_project.id,
-        version_number=0,  # This is correct - initial version is 0
-        name="Initial Version",
-        parent_id=None,
-        created_at=datetime.now(),
-        updated_at=datetime.now()
-    )
-    
-    # Create file with version_id
-    file = File(
-        id=uuid4(),
-        version_id=version_id,  # Set version_id explicitly
-        path="src/test.tsx",
-        content="export const Test = () => <div>Test</div>",
-        created_at=datetime.now(),
-        updated_at=datetime.now()
-    )
-    
-    # Initialize files list
-    version.files = [file]
-    
-    # Set up bidirectional relationships
-    file.version = version
-    
-    # Set up project relationship
-    version.project = mock_project
-    mock_project.versions = [version]
-    
-    return version
-
-@pytest.fixture(scope="module")
-def mock_db(mock_project, mock_version):
-    """Mock database session for testing."""
-    mock = AsyncMock()
-    
-    # Configure async methods
-    mock.commit = AsyncMock()
-    mock.rollback = AsyncMock()
-    # Configure refresh to set required fields
-    async def mock_refresh(obj):
-        if not getattr(obj, 'id', None):
-            obj.id = uuid4()
-        # Only set active on Project instances
-        if isinstance(obj, Project) and not getattr(obj, 'active', None):
-            obj.active = True
-        if not getattr(obj, 'created_at', None):
-            obj.created_at = datetime.now()
-        if not getattr(obj, 'updated_at', None):
-            obj.updated_at = datetime.now()
-        return obj
-
-    mock.refresh = AsyncMock(side_effect=mock_refresh)
-    mock.scalar = AsyncMock()
-    mock.scalars = AsyncMock()
-    
-    # Configure mock results
-    project_result = MagicMock()
-    project_result.scalar_one_or_none = lambda: mock_project
-    project_result.unique = lambda: project_result
-    project_result.scalars = lambda: MagicMock(all=lambda: [mock_project])
-    project_result.scalar_one = lambda: mock_project.active
-
-    version_result = MagicMock()
-    version_result.scalar_one_or_none = lambda: mock_version
-    version_result.unique = lambda: version_result
-    version_result.scalars = lambda: MagicMock(all=lambda: [mock_version])
-    version_result.all = lambda: [(mock_version.id, mock_version.version_number, mock_version.name)]
-
-    # Configure execute to return appropriate result
-    mock.execute = AsyncMock(return_value=version_result)
-    
-    return mock
 
 @pytest.fixture
 def mock_openrouter():
@@ -119,10 +61,10 @@ def mock_openrouter():
     app.dependency_overrides.clear()
 
 @pytest.fixture
-def client(mock_db: Session):
-    """Test client with mocked database."""
-    def override_get_db():
-        return mock_db
+def client(db_session):
+    """Test client with test database session."""
+    async def override_get_db():
+        yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as client:
