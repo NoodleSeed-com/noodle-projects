@@ -1,7 +1,11 @@
 """Tests for OpenRouter service."""
 import pytest
 import asyncio
-from unittest.mock import Mock, patch, MagicMock, mock_open, AsyncMock
+import os
+import re
+import json
+import logging
+from unittest.mock import Mock, patch, MagicMock, mock_open, AsyncMock, call
 from pathlib import Path
 from openai import AsyncOpenAI, OpenAIError, APITimeoutError, RateLimitError
 from ...services.openrouter import OpenRouterService, _read_prompt_file
@@ -644,6 +648,212 @@ async def test_retry_preserves_original_parameters():
     # Verify both calls used identical parameters
     assert first_call_args["model"] == second_call_args["model"]
     assert first_call_args["messages"] == second_call_args["messages"]
+
+@pytest.mark.asyncio
+async def test_execute_with_retry_success_first_try():
+    """Test _execute_with_retry succeeds on first try without retries."""
+    service = OpenRouterService()
+    
+    # Create a mock function that succeeds immediately
+    mock_func = AsyncMock(return_value="success")
+    
+    # Execute with retry
+    result = await service._execute_with_retry(mock_func, "arg1", key="value")
+    
+    # Verify result and that function was called exactly once with correct args
+    assert result == "success"
+    mock_func.assert_called_once_with("arg1", key="value")
+
+@pytest.mark.asyncio
+async def test_execute_with_retry_custom_max_retries():
+    """Test _execute_with_retry with custom max_retries value."""
+    service = OpenRouterService()
+    
+    # Create a mock function that always fails
+    mock_func = AsyncMock(side_effect=ValueError("Test error"))
+    
+    # Execute with custom max_retries=5
+    with pytest.raises(ValueError):
+        await service._execute_with_retry(mock_func, max_retries=5)
+    
+    # Verify function was called exactly 6 times (initial + 5 retries)
+    assert mock_func.call_count == 6
+
+@pytest.mark.asyncio
+async def test_process_ai_response():
+    """Test _process_ai_response correctly extracts and validates changes."""
+    service = OpenRouterService()
+    
+    # Sample response with valid changes
+    response_text = '''Some text before
+    <noodle_response>
+    {"changes": [{"operation": "create", "path": "test.txt", "content": "test content"}]}
+    </noodle_response>
+    Some text after'''
+    
+    # Process the response
+    changes = await service._process_ai_response(response_text)
+    
+    # Verify changes are extracted correctly
+    assert len(changes) == 1
+    assert changes[0].operation == "create"
+    assert changes[0].path == "test.txt"
+    assert changes[0].content == "test content"
+
+@pytest.mark.asyncio
+async def test_process_ai_response_whitespace_handling():
+    """Test _process_ai_response handles whitespace in tags correctly."""
+    service = OpenRouterService()
+    
+    # Sample response with extra whitespace in tags
+    response_text = '''<noodle_response>   
+    {"changes": [{"operation": "create", "path": "test.txt", "content": "test content"}]}
+       </noodle_response>'''
+    
+    # Process the response
+    changes = await service._process_ai_response(response_text)
+    
+    # Verify changes are extracted correctly
+    assert len(changes) == 1
+    assert changes[0].path == "test.txt"
+
+@pytest.mark.asyncio
+async def test_get_client():
+    """Test _get_client initializes AsyncOpenAI client correctly."""
+    service = OpenRouterService()
+    
+    # Mock environment variable
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test_api_key"}):
+        client = await service._get_client()
+    
+    # Verify client configuration
+    assert client.api_key == "test_api_key"
+    # The URL might end with a trailing slash, so we check if one contains the other
+    assert "https://openrouter.ai/api/v1" in str(client.base_url)
+    assert client.default_headers["HTTP-Referer"] == "https://noodleseed.com"
+    assert client.default_headers["X-Title"] == "Noodle Seed"
+
+@pytest.mark.asyncio
+async def test_get_client_empty_key():
+    """Test _get_client raises error for empty API key."""
+    service = OpenRouterService()
+    
+    # Mock environment with empty API key
+    with patch.dict(os.environ, {"OPENROUTER_API_KEY": ""}):
+        with pytest.raises(ValueError, match="OPENROUTER_API_KEY environment variable is required"):
+            await service._get_client()
+
+@pytest.mark.asyncio
+@patch('app.services.openrouter._read_prompt_file')
+async def test_get_file_changes_formats_messages_correctly(mock_read_prompt):
+    """Test get_file_changes formats system and user messages correctly."""
+    # Mock prompt file reads
+    mock_read_prompt.side_effect = [
+        "System message template",  # system_message.md
+        "Project: {project_context}\nFiles: {current_files}\nRequest: {change_request}"  # user_message_template.md
+    ]
+    
+    # Create mock completion and client
+    mock_completion = MagicMock()
+    mock_completion.choices = [
+        MagicMock(
+            message=MagicMock(
+                content='<noodle_response>{"changes": []}</noodle_response>'
+            )
+        )
+    ]
+    
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create.return_value = mock_completion
+    
+    # Create service with mock client
+    service = OpenRouterService(client=mock_client)
+    
+    # Test data
+    project_context = "Test project context"
+    change_request = "Create a file"
+    current_files = [
+        FileResponse(
+            id="123e4567-e89b-12d3-a456-426614174000",  # Valid UUID
+            path="file1.txt", 
+            content="Content 1"
+        ),
+        FileResponse(
+            id="123e4567-e89b-12d3-a456-426614174001",  # Valid UUID
+            path="file2.txt", 
+            content="Content 2"
+        )
+    ]
+    
+    # Call get_file_changes
+    await service.get_file_changes(project_context, change_request, current_files)
+    
+    # Verify prompt files were read
+    mock_read_prompt.assert_has_calls([
+        call("system_message.md"),
+        call("user_message_template.md")
+    ])
+    
+    # Verify API was called with correctly formatted messages
+    call_args = mock_client.chat.completions.create.call_args[1]
+    messages = call_args["messages"]
+    
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"] == "System message template"
+    
+    assert messages[1]["role"] == "user"
+    assert "Test project context" in messages[1]["content"]
+    assert "Create a file" in messages[1]["content"]
+    assert "file1.txt" in messages[1]["content"]
+    assert "file2.txt" in messages[1]["content"]
+    assert "Content 1" in messages[1]["content"]
+    assert "Content 2" in messages[1]["content"]
+
+@pytest.mark.asyncio
+@patch('logging.warning')
+@patch('logging.info')
+async def test_execute_with_retry_logs_retries(mock_log_info, mock_log_warning):
+    """Test that _execute_with_retry logs retry attempts."""
+    service = OpenRouterService()
+    
+    # Create a mock function that fails once then succeeds
+    mock_func = AsyncMock(side_effect=[
+        APITimeoutError("Request timed out"),
+        "success"
+    ])
+    
+    # Execute with retry
+    result = await service._execute_with_retry(mock_func)
+    
+    # Verify result
+    assert result == "success"
+    
+    # Verify logging calls - use assert_called_once to avoid relying on exact message
+    mock_log_warning.assert_called_once()
+    assert "API error during request" in mock_log_warning.call_args[0][0]
+    assert "Request timed out" in mock_log_warning.call_args[0][0]
+    
+    mock_log_info.assert_called_once()
+    assert "Retrying request" in mock_log_info.call_args[0][0]
+
+@pytest.mark.asyncio
+@patch('logging.error')
+async def test_execute_with_retry_logs_all_attempts_failed(mock_log_error):
+    """Test that _execute_with_retry logs when all retry attempts fail."""
+    service = OpenRouterService()
+    
+    # Create a mock function that always fails
+    test_error = ValueError("Test error")
+    mock_func = AsyncMock(side_effect=test_error)
+    
+    # Execute with retry and expect failure
+    with pytest.raises(ValueError):
+        await service._execute_with_retry(mock_func, max_retries=1)
+    
+    # Verify error logging
+    mock_log_error.assert_called_with(
+        "All retry attempts failed: Test error"
+    )
 
 @pytest.mark.asyncio
 async def test_get_openrouter():
