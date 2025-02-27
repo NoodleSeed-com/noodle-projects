@@ -1,9 +1,12 @@
 """OpenRouter service for AI interactions."""
 import os
 import re
+import json
+import logging
+import asyncio
 from pathlib import Path
-from typing import List
-from openai import AsyncOpenAI
+from typing import List, Any, Dict, Optional
+from openai import AsyncOpenAI, APITimeoutError, RateLimitError, OpenAIError
 from ..schemas.common import FileChange, AIResponse
 from ..schemas.file import FileResponse
 
@@ -46,6 +49,85 @@ class OpenRouterService:
             }
         )
     
+    async def _process_ai_response(self, response_text: str) -> List[FileChange]:
+        """Process AI response text and extract file changes.
+        
+        Args:
+            response_text: The raw response text from the AI model
+            
+        Returns:
+            List of file changes to apply
+            
+        Raises:
+            ValueError: If AI response is invalid or contains duplicate paths
+        """
+        # Extract response between tags
+        match = re.search(r"<noodle_response>\s*(.*?)\s*</noodle_response>", response_text, re.DOTALL)
+        if not match:
+            raise ValueError("AI response missing noodle_response tags")
+        
+        # Parse changes
+        ai_response = AIResponse.model_validate_json(match.group(1))
+        
+        # Check for duplicate paths
+        paths = [change.path for change in ai_response.changes]
+        if len(paths) != len(set(paths)):
+            raise ValueError("Duplicate file paths found in changes")
+        
+        return ai_response.changes
+    
+    async def _execute_with_retry(
+        self, 
+        func,
+        *args,
+        max_retries: int = 2,
+        **kwargs
+    ) -> Any:
+        """Execute a function with retry logic.
+        
+        Args:
+            func: The async function to execute
+            *args: Positional arguments for the function
+            max_retries: Maximum number of retry attempts (default: 2)
+            **kwargs: Keyword arguments for the function
+            
+        Returns:
+            The result of the function call
+            
+        Raises:
+            The last exception that occurred if all retries fail
+        """
+        retries = 0
+        last_exception = None
+        
+        while retries <= max_retries:
+            try:
+                if retries > 0:
+                    # Calculate backoff time: 1s, 2s for retries
+                    backoff_time = retries
+                    logging.info(f"Retrying request (attempt {retries} of {max_retries}) after {backoff_time}s delay")
+                    await asyncio.sleep(backoff_time)
+                
+                return await func(*args, **kwargs)
+                
+            except (APITimeoutError, RateLimitError, OpenAIError) as e:
+                last_exception = e
+                logging.warning(f"API error during request (attempt {retries+1} of {max_retries+1}): {str(e)}")
+            except ValueError as e:
+                # Handle missing tags or other validation errors
+                last_exception = e
+                logging.warning(f"Validation error in response (attempt {retries+1} of {max_retries+1}): {str(e)}")
+            except Exception as e:
+                # Handle unexpected errors like JSON parsing errors
+                last_exception = e
+                logging.warning(f"Unexpected error processing request (attempt {retries+1} of {max_retries+1}): {str(e)}")
+            
+            retries += 1
+            
+        # If we've exhausted all retries, raise the last exception
+        logging.error(f"All retry attempts failed: {str(last_exception)}")
+        raise last_exception
+    
     async def get_file_changes(
         self,
         project_context: str,
@@ -86,29 +168,24 @@ class OpenRouterService:
             change_request=change_request
         )
         
-        completion = await self.client.chat.completions.create(
-            model="google/gemini-2.0-flash-001",  # Using Gemini 2.0 Flash for testing
-            messages=[
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": user_message}
-            ]
-        )
+        # Prepare the API call parameters
+        model = "google/gemini-2.0-flash-001"  # Using Gemini 2.0 Flash for testing
+        messages = [
+            {"role": "system", "content": system_message},
+            {"role": "user", "content": user_message}
+        ]
         
-        # Extract response between tags
-        response_text = completion.choices[0].message.content
-        match = re.search(r"<noodle_response>\s*(.*?)\s*</noodle_response>", response_text, re.DOTALL)
-        if not match:
-            raise ValueError("AI response missing noodle_response tags")
+        # Define an async function to make the API call to avoid capturing outer scope variables
+        async def make_api_call():
+            completion = await self.client.chat.completions.create(
+                model=model,
+                messages=messages
+            )
+            response_text = completion.choices[0].message.content
+            return await self._process_ai_response(response_text)
         
-        # Parse changes
-        ai_response = AIResponse.model_validate_json(match.group(1))
-        
-        # Check for duplicate paths
-        paths = [change.path for change in ai_response.changes]
-        if len(paths) != len(set(paths)):
-            raise ValueError("Duplicate file paths found in changes")
-        
-        return ai_response.changes
+        # Execute the API call with retry logic
+        return await self._execute_with_retry(make_api_call)
 
 async def get_openrouter():
     """Dependency to get OpenRouter service."""

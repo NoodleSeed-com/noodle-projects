@@ -229,67 +229,56 @@ class VersionCRUD:
             ValueError: If file operations are invalid
             sqlalchemy.exc.IntegrityError: If version number conflict occurs
         """
-        try:
-            # Check if a transaction is already active on the session
-            in_transaction = db.in_transaction()
-            
-            # Get parent version with its files and lock the row
-            parent_version = await db.execute(
-                select(Version)
-                .options(joinedload(Version.files))
-                .filter(
-                    Version.project_id == project_id,
-                    Version.version_number == parent_version_number
-                )
-                # Disable lock during testing
-                .execution_options(populate_existing=True)
+        # No need to manually handle transactions as they should be managed by the caller
+        # This function now assumes it's being called within a transaction
+        
+        # Get parent version with its files
+        parent_version = await db.execute(
+            select(Version)
+            .options(joinedload(Version.files))
+            .filter(
+                Version.project_id == project_id,
+                Version.version_number == parent_version_number
             )
-            parent_version = parent_version.unique().scalar_one_or_none()
-            
-            if not parent_version:
-                return None
+            .execution_options(populate_existing=True)
+        )
+        parent_version = parent_version.unique().scalar_one_or_none()
+        
+        if not parent_version:
+            return None
 
-            # Create a map of existing files by path
-            existing_files = {file.path: file for file in parent_version.files}
-            
-            # Validate all file changes before proceeding
-            await validate_file_changes(changes, existing_files)
-            
-            # Get next version number
-            new_version_number = await VersionCRUD.get_next_number(db, project_id)
-            
-            # Create new version
-            new_version = Version(
-                project_id=project_id,
-                version_number=new_version_number,
-                parent_id=parent_version.id,
-                name=name
-            )
-            db.add(new_version)
-            await db.flush()  # Get new_version.id without committing
-            
-            # Apply file changes
-            files_to_add = await apply_file_changes(
-                new_version.id,
-                changes,
-                existing_files
-            )
-            
-            # Set the files relationship
-            new_version.files = files_to_add
-            db.add(new_version)
-            await db.flush()
-            await db.refresh(new_version)
-            
-            # Commit if we started the transaction
-            if not in_transaction:
-                await db.commit()
-            
-            # Get version response
-            return await VersionCRUD.get(db, project_id, new_version.version_number)
-                
-        except Exception as e:
-            # Rollback only if we started the transaction
-            if not in_transaction:
-                await db.rollback()
-            raise e
+        # Create a map of existing files by path
+        existing_files = {file.path: file for file in parent_version.files}
+        
+        # Validate all file changes before proceeding
+        # This may raise ValueError which will be caught by the caller
+        await validate_file_changes(changes, existing_files)
+        
+        # Get next version number
+        new_version_number = await VersionCRUD.get_next_number(db, project_id)
+        
+        # Create new version
+        new_version = Version(
+            project_id=project_id,
+            version_number=new_version_number,
+            parent_id=parent_version.id,
+            name=name
+        )
+        db.add(new_version)
+        await db.flush()  # Get new_version.id without committing
+        
+        # Apply file changes
+        files_to_add = await apply_file_changes(
+            new_version.id,
+            changes,
+            existing_files
+        )
+        
+        # Set the files relationship
+        new_version.files = files_to_add
+        db.add(new_version)
+        await db.flush()
+        await db.refresh(new_version)
+        
+        # Return the version response
+        return await VersionCRUD.get(db, project_id, new_version.version_number)

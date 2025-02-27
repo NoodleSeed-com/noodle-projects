@@ -32,6 +32,8 @@ async def noodle_error_handler(request: Request, exc: NoodleError):
         status_code = status.HTTP_403_FORBIDDEN
     elif exc.error_type == ErrorType.DATABASE:
         status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    elif exc.error_type == ErrorType.SERVICE_ERROR:
+        status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     
     return JSONResponse(
         status_code=status_code,

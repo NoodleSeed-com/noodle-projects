@@ -1,5 +1,6 @@
 """Tests for OpenRouter service."""
 import pytest
+import asyncio
 from unittest.mock import Mock, patch, MagicMock, mock_open, AsyncMock
 from pathlib import Path
 from openai import AsyncOpenAI, OpenAIError, APITimeoutError, RateLimitError
@@ -342,6 +343,307 @@ def test_read_prompt_file():
     with patch('builtins.open', mock_open(read_data="test content")):
         content = _read_prompt_file("test.md")
         assert content == "test content"
+
+@pytest.mark.asyncio
+async def test_retry_successful_after_timeout():
+    """Test that API call is retried after a timeout and succeeds on retry."""
+    # Create a mock client that fails with timeout once, then succeeds
+    mock_client = AsyncMock()
+    
+    # First call raises timeout error
+    # Second call succeeds with valid response
+    mock_completion = MagicMock()
+    mock_completion.choices = [
+        MagicMock(
+            message=MagicMock(
+                content='<noodle_response>{"changes": [{"operation": "create", "path": "test.txt", "content": "test"}]}</noodle_response>'
+            )
+        )
+    ]
+    
+    # Configure the side effect to fail once then succeed
+    mock_client.chat.completions.create.side_effect = [
+        APITimeoutError("Request timed out"),
+        mock_completion
+    ]
+    
+    service = OpenRouterService(client=mock_client)
+    
+    # Execute the method
+    changes = await service.get_file_changes("test", "test", [])
+    
+    # Verify result and that client method was called twice
+    assert len(changes) == 1
+    assert changes[0].path == "test.txt"
+    assert mock_client.chat.completions.create.call_count == 2
+
+@pytest.mark.asyncio
+async def test_retry_successful_after_rate_limit():
+    """Test that API call is retried after a rate limit error and succeeds on retry."""
+    # Create a mock client
+    mock_client = AsyncMock()
+    
+    # Configure mock response for rate limit error
+    mock_response = MagicMock()
+    mock_response.status_code = 429
+    error_body = {
+        "error": {
+            "message": "Rate limit exceeded",
+            "type": "requests",
+            "code": "rate_limit_exceeded"
+        }
+    }
+    
+    # Configure successful response
+    mock_completion = MagicMock()
+    mock_completion.choices = [
+        MagicMock(
+            message=MagicMock(
+                content='<noodle_response>{"changes": [{"operation": "create", "path": "test.txt", "content": "test"}]}</noodle_response>'
+            )
+        )
+    ]
+    
+    # Configure the side effect to fail with rate limit then succeed
+    mock_client.chat.completions.create.side_effect = [
+        RateLimitError(
+            message="Rate limit exceeded",
+            response=mock_response,
+            body=error_body
+        ),
+        mock_completion
+    ]
+    
+    service = OpenRouterService(client=mock_client)
+    
+    # Execute
+    changes = await service.get_file_changes("test", "test", [])
+    
+    # Verify
+    assert len(changes) == 1
+    assert changes[0].path == "test.txt"
+    assert mock_client.chat.completions.create.call_count == 2
+
+@pytest.mark.asyncio
+async def test_retry_successful_after_malformed_response():
+    """Test that API call is retried after receiving a malformed response."""
+    # Create a mock client
+    mock_client = AsyncMock()
+    
+    # First response is malformed (missing tags)
+    malformed_completion = MagicMock()
+    malformed_completion.choices = [
+        MagicMock(
+            message=MagicMock(
+                content='Response without tags'
+            )
+        )
+    ]
+    
+    # Second response is correct
+    valid_completion = MagicMock()
+    valid_completion.choices = [
+        MagicMock(
+            message=MagicMock(
+                content='<noodle_response>{"changes": [{"operation": "create", "path": "test.txt", "content": "test"}]}</noodle_response>'
+            )
+        )
+    ]
+    
+    # Configure mock to return malformed response first, then valid
+    mock_client.chat.completions.create.side_effect = [
+        malformed_completion,
+        valid_completion
+    ]
+    
+    service = OpenRouterService(client=mock_client)
+    
+    # Execute
+    changes = await service.get_file_changes("test", "test", [])
+    
+    # Verify
+    assert len(changes) == 1
+    assert changes[0].path == "test.txt"
+    assert mock_client.chat.completions.create.call_count == 2
+
+@pytest.mark.asyncio
+async def test_retry_failed_after_max_attempts():
+    """Test that API call fails after maximum retry attempts."""
+    # Create a mock client that always fails with timeout
+    mock_client = AsyncMock()
+    
+    # Configure mock to always fail with timeout
+    mock_client.chat.completions.create.side_effect = APITimeoutError("Request timed out")
+    
+    service = OpenRouterService(client=mock_client)
+    
+    # Execute and expect failure after 3 attempts
+    with pytest.raises(APITimeoutError, match="Request timed out"):
+        await service.get_file_changes("test", "test", [])
+    
+    # Verify client was called exactly 3 times (initial + 2 retries)
+    assert mock_client.chat.completions.create.call_count == 3
+
+@pytest.mark.asyncio
+async def test_retry_with_different_error_types():
+    """Test retry with different types of errors in sequence."""
+    # Create a mock client
+    mock_client = AsyncMock()
+    
+    # Configure mock response for rate limit error
+    mock_response = MagicMock()
+    mock_response.status_code = 429
+    error_body = {
+        "error": {
+            "message": "Rate limit exceeded",
+            "type": "requests",
+            "code": "rate_limit_exceeded"
+        }
+    }
+    
+    # Configure valid response for success
+    mock_completion = MagicMock()
+    mock_completion.choices = [
+        MagicMock(
+            message=MagicMock(
+                content='<noodle_response>{"changes": [{"operation": "create", "path": "test.txt", "content": "test"}]}</noodle_response>'
+            )
+        )
+    ]
+    
+    # Configure the mock to fail with different errors before succeeding
+    mock_client.chat.completions.create.side_effect = [
+        APITimeoutError("Request timed out"),  # First failure - timeout
+        RateLimitError(                       # Second failure - rate limit
+            message="Rate limit exceeded",
+            response=mock_response,
+            body=error_body
+        ),
+        mock_completion                       # Success on third try
+    ]
+    
+    service = OpenRouterService(client=mock_client)
+    
+    # Execute
+    changes = await service.get_file_changes("test", "test", [])
+    
+    # Verify
+    assert len(changes) == 1
+    assert changes[0].path == "test.txt"
+    assert mock_client.chat.completions.create.call_count == 3
+
+@pytest.mark.asyncio
+async def test_retry_with_invalid_json():
+    """Test retry with invalid JSON in response."""
+    # Create a mock client
+    mock_client = AsyncMock()
+    
+    # First response has invalid JSON
+    invalid_json_completion = MagicMock()
+    invalid_json_completion.choices = [
+        MagicMock(
+            message=MagicMock(
+                content='<noodle_response>{"invalid": json}</noodle_response>'
+            )
+        )
+    ]
+    
+    # Second response is valid
+    valid_completion = MagicMock()
+    valid_completion.choices = [
+        MagicMock(
+            message=MagicMock(
+                content='<noodle_response>{"changes": [{"operation": "create", "path": "test.txt", "content": "test"}]}</noodle_response>'
+            )
+        )
+    ]
+    
+    # Configure mock
+    mock_client.chat.completions.create.side_effect = [
+        invalid_json_completion,
+        valid_completion
+    ]
+    
+    service = OpenRouterService(client=mock_client)
+    
+    # Execute
+    changes = await service.get_file_changes("test", "test", [])
+    
+    # Verify
+    assert len(changes) == 1
+    assert changes[0].path == "test.txt"
+    assert mock_client.chat.completions.create.call_count == 2
+
+@pytest.mark.asyncio
+async def test_retry_with_exponential_backoff():
+    """Test that retry uses exponential backoff between attempts."""
+    # Create a mock client that always fails
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create.side_effect = APITimeoutError("Request timed out")
+    
+    service = OpenRouterService(client=mock_client)
+    
+    # Mock the sleep function to track delays
+    sleep_times = []
+    
+    async def mock_sleep(seconds):
+        sleep_times.append(seconds)
+        return
+    
+    # Patch asyncio.sleep to use our mock
+    with patch('asyncio.sleep', mock_sleep):
+        # Execute and expect failure after max retries
+        with pytest.raises(APITimeoutError):
+            await service.get_file_changes("test", "test", [])
+    
+    # Verify that sleep was called with increasing delays
+    assert len(sleep_times) == 2  # Two retries means two sleeps
+    assert sleep_times[0] < sleep_times[1]  # Verify increasing backoff
+
+@pytest.mark.asyncio
+async def test_retry_preserves_original_parameters():
+    """Test that retry uses the same parameters as the original call."""
+    # Create a mock client
+    mock_client = AsyncMock()
+    
+    # First call fails, second succeeds
+    mock_completion = MagicMock()
+    mock_completion.choices = [
+        MagicMock(
+            message=MagicMock(
+                content='<noodle_response>{"changes": [{"operation": "create", "path": "test.txt", "content": "test"}]}</noodle_response>'
+            )
+        )
+    ]
+    
+    mock_client.chat.completions.create.side_effect = [
+        APITimeoutError("Request timed out"),
+        mock_completion
+    ]
+    
+    service = OpenRouterService(client=mock_client)
+    
+    # Test data
+    project_context = "Test project"
+    change_request = "Create a file"
+    current_files = [
+        FileResponse(
+            id="123e4567-e89b-12d3-a456-426614174000",
+            path="existing.txt",
+            content="existing content"
+        )
+    ]
+    
+    # Execute
+    await service.get_file_changes(project_context, change_request, current_files)
+    
+    # Get the call arguments from both calls
+    first_call_args = mock_client.chat.completions.create.call_args_list[0][1]
+    second_call_args = mock_client.chat.completions.create.call_args_list[1][1]
+    
+    # Verify both calls used identical parameters
+    assert first_call_args["model"] == second_call_args["model"]
+    assert first_call_args["messages"] == second_call_args["messages"]
 
 @pytest.mark.asyncio
 async def test_get_openrouter():

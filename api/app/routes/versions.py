@@ -94,26 +94,39 @@ async def create_version(
         raise NoodleError("Parent version not found", ErrorType.NOT_FOUND)
     
     try:
-        # Get changes from OpenRouter service
-        changes = await openrouter_service.get_file_changes(
-            project_context=request.project_context,
-            change_request=request.change_request,
-            current_files=parent_version.files
-        )
-        
-        # Create new version with changes
-        new_version = await versions.create_version(
-            db=db,
-            project_id=project_id,
-            parent_version_number=request.parent_version_number,
-            name=request.name,
-            changes=changes
-        )
-        
-        if not new_version:
-            raise NoodleError("Failed to create new version", ErrorType.DATABASE)
-        
-        return new_version
+        # Start an explicit transaction for the entire operation that will be committed
+        # only if the entire operation succeeds
+        async with db.begin():
+            # Get changes from OpenRouter service
+            try:
+                changes = await openrouter_service.get_file_changes(
+                    project_context=request.project_context,
+                    change_request=request.change_request,
+                    current_files=parent_version.files
+                )
+                print(f"DEBUG: Got changes from OpenRouter: {changes}")
+            except Exception as e:
+                print(f"ERROR: OpenRouter service failed: {e}")
+                # Explicitly roll back transaction on service error
+                # No need for explicit rollback since the context manager will do it
+                raise NoodleError(f"Service error: {str(e)}", ErrorType.SERVICE_ERROR)
+            
+            # Create new version with changes - this will run in the same transaction
+            # and any exceptions will trigger a rollback of the entire transaction
+            new_version = await versions.create_version(
+                db=db,
+                project_id=project_id,
+                parent_version_number=request.parent_version_number,
+                name=request.name,
+                changes=changes
+            )
+            
+            if not new_version:
+                raise NoodleError("Failed to create new version", ErrorType.DATABASE)
+            
+            # If we get here without exceptions, the transaction will be committed
+            # when we exit the context manager
+            return new_version
         
     except ValueError as e:
         # Handle validation errors (empty paths, duplicate paths, etc.)
@@ -124,6 +137,11 @@ async def create_version(
     except sqlalchemy.exc.OperationalError as e:
         # Handle transaction/concurrency errors
         raise NoodleError(str(e), ErrorType.DATABASE)
+    except ValueError as e:
+        # Handle validation errors (empty paths, duplicate paths, etc.)
+        if "is not a valid FileOperation" in str(e):
+            raise NoodleError(f"Invalid file operation: {str(e)}", ErrorType.VALIDATION)
+        raise NoodleError(str(e), ErrorType.VALIDATION)
     except Exception as e:
         # Handle unexpected errors
         raise NoodleError(f"Error creating version: {str(e)}", ErrorType.DATABASE)

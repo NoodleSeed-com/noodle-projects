@@ -72,8 +72,9 @@ async def db_session(async_session_factory):
     # Create a new session for each test
     session = async_session_factory()
     
-    # Start a transaction
-    await session.begin()
+    # Start a transaction - use begin_nested() to allow nested transactions
+    # This creates a SAVEPOINT that can be used by the routes for transaction management
+    await session.begin_nested()
     
     try:
         # Use the session in the test
@@ -81,6 +82,9 @@ async def db_session(async_session_factory):
     finally:
         # Rollback the transaction to undo any changes
         await session.rollback()
+        # Ensure any open transaction is closed
+        if session.in_transaction():
+            await session.close_all()
         # Close the session
         await session.close()
 
@@ -93,12 +97,92 @@ class TestOpenRouterService(OpenRouterService):
         change_request: str,
         current_files: List
     ) -> List[FileChange]:
-        """Return simple test file changes without calling API."""
-        # Return a simple change that creates a new file
-        # Using proper operation value from FileOperation enum
+        """Return test file changes without calling API.
+        
+        This implementation is designed to be robust and handle all test cases
+        appropriately, including simulating failure conditions when needed.
+        """
         from app.schemas.common import FileOperation
         
-        # Create a new file
+        # Special test cases with expected behaviors
+        test_cases = {
+            # Transaction rollback test - should trigger validation error
+            "Should Fail Version": lambda: self._raise_empty_path_error(),
+            
+            # Duplicate path test - should trigger validation error
+            "Should Fail With Duplicate Path": lambda: [
+                FileChange(
+                    path="good_file.txt",
+                    content="This file is valid",
+                    operation=FileOperation.CREATE
+                ),
+                FileChange(
+                    path="good_file.txt",  # Duplicate path - will cause validation error
+                    content="This will fail because path is a duplicate",
+                    operation=FileOperation.CREATE
+                )
+            ],
+            
+            # Invalid operation test - should trigger validation error
+            "Invalid Operation Test": lambda: self._raise_invalid_operation(),
+            
+            # Transaction test - should fail with tx error in the test
+            "Transaction Test Version": lambda: self._raise_empty_path_error(),
+            
+            # Sequential version 1
+            "Sequential Version 1": lambda: [
+                FileChange(
+                    path="sequential_test_1.txt",
+                    content="This is the first sequential test file",
+                    operation=FileOperation.CREATE
+                )
+            ],
+            
+            # Sequential version 2
+            "Sequential Version 2": lambda: [
+                FileChange(
+                    path="sequential_test_2.txt",
+                    content="This is the second sequential test file",
+                    operation=FileOperation.CREATE
+                ),
+                FileChange(
+                    path="sequential_test_1.txt",
+                    content="This is the updated first file",
+                    operation=FileOperation.UPDATE
+                )
+            ],
+            
+            # API version tests
+            "API Version 1": lambda: [
+                FileChange(
+                    path="api_file_1.txt",
+                    content="Content for api_file_1.txt",
+                    operation=FileOperation.CREATE
+                )
+            ],
+            
+            "API Version 2": lambda: [
+                FileChange(
+                    path="api_file_2.txt",
+                    content="Content for api_file_2.txt",
+                    operation=FileOperation.CREATE
+                )
+            ]
+        }
+        
+        # Check if we have a handler for this test case
+        for key, handler in test_cases.items():
+            if key in change_request:
+                try:
+                    return handler()
+                except Exception as e:
+                    print(f"Test handler for {key} failed: {str(e)}")
+                    # Re-raise expected exceptions
+                    if "is not a valid FileOperation" in str(e):
+                        raise
+                    # For other exceptions, return a default response
+        
+        # Default fallback - create a simple test file
         return [
             FileChange(
                 path="test_file.txt",
@@ -106,6 +190,18 @@ class TestOpenRouterService(OpenRouterService):
                 operation=FileOperation.CREATE
             )
         ]
+    
+    def _raise_invalid_operation(self):
+        """Helper method to simulate invalid operation error."""
+        raise ValueError("'invalid_operation' is not a valid FileOperation")
+        # This line is never reached but needed for type checking
+        return []
+        
+    def _raise_empty_path_error(self):
+        """Helper method to simulate empty path validation error."""
+        raise ValueError("File path cannot be empty")
+        # This line is never reached but needed for type checking
+        return []
 
 @pytest_asyncio.fixture
 async def client(db_session):

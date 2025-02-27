@@ -9,6 +9,7 @@ class ErrorType(Enum):
     DATABASE = auto()
     NOT_FOUND = auto()
     PERMISSION = auto()
+    SERVICE_ERROR = auto()  # For external service errors (OpenRouter, etc.)
 
 class NoodleError(Exception):
     """Base error class for all application errors."""
