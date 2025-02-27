@@ -21,14 +21,29 @@ from typing import List
 
 @pytest.fixture(scope="session")
 def event_loop():
-    """Create an instance of the default event loop for each test session."""
+    """Create a session-scoped event loop for integration tests.
+    
+    For integration tests, we need a session-scoped event loop to work with
+    the session-scoped database fixtures. This ensures database connections
+    stay valid throughout the test session.
+    """
     loop = asyncio.get_event_loop_policy().new_event_loop()
+    asyncio.set_event_loop(loop)
     yield loop
+    # Clean up pending tasks
+    pending = asyncio.all_tasks(loop)
+    if pending:
+        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
     loop.close()
 
 @pytest_asyncio.fixture(scope="session")
 async def test_engine(event_loop):
-    """Create a session-scoped SQLAlchemy engine."""
+    """Create a session-scoped SQLAlchemy engine.
+    
+    This fixture uses the session-scoped event_loop fixture to ensure
+    consistent loop usage throughout the test session.
+    """    
+    # Create the engine
     engine = create_async_engine(str(settings.DATABASE_URL), echo=True)
     
     # Create tables
