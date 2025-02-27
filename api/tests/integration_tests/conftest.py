@@ -15,6 +15,9 @@ load_dotenv(dotenv_path=env_path)
 from app.main import app
 from app.config import get_db, settings
 from app.models.base import Base
+from app.services.openrouter import OpenRouterService
+from app.schemas.common import FileChange, AIResponse
+from typing import List
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -46,21 +49,74 @@ async def async_session_factory(test_engine):
 
 @pytest_asyncio.fixture(scope="function")
 async def db_session(async_session_factory):
-    """Create a function-scoped database session with transaction."""
-    async with async_session_factory() as session:
-        async with session.begin():
-            yield session
-            await session.rollback()
+    """Create a function-scoped database session with transaction.
+    
+    This fixture creates a session with an active transaction, then rolls
+    it back at the end of the test to undo any changes.
+    """
+    # Create a new session for each test
+    session = async_session_factory()
+    
+    # Start a transaction
+    await session.begin()
+    
+    try:
+        # Use the session in the test
+        yield session
+    finally:
+        # Rollback the transaction to undo any changes
+        await session.rollback()
+        # Close the session
+        await session.close()
+
+class TestOpenRouterService(OpenRouterService):
+    """Test version of OpenRouterService that doesn't call actual API."""
+    
+    async def get_file_changes(
+        self,
+        project_context: str,
+        change_request: str,
+        current_files: List
+    ) -> List[FileChange]:
+        """Return simple test file changes without calling API."""
+        # Return a simple change that creates a new file
+        # Using proper operation value from FileOperation enum
+        from app.schemas.common import FileOperation
+        
+        # Create a new file
+        return [
+            FileChange(
+                path="test_file.txt",
+                content="This is a test file created for testing",
+                operation=FileOperation.CREATE
+            )
+        ]
 
 @pytest_asyncio.fixture
 async def client(db_session):
-    """Create a test client with a function-scoped database session."""
+    """Create a test client with a function-scoped database session.
+    
+    This uses the db_session fixture which handles transaction management,
+    including proper nested transaction support for version creation.
+    """    
+    # Create a function that will use our existing db_session
     async def override_get_db():
         yield db_session
-
+    
+    # Override the OpenRouter service with our test version
+    async def get_test_openrouter():
+        return TestOpenRouterService()
+    
+    # Set up overrides
     app.dependency_overrides[get_db] = override_get_db
-    async with AsyncClient(app=app, base_url="http://test") as ac:
+    from app.services.openrouter import get_openrouter
+    app.dependency_overrides[get_openrouter] = get_test_openrouter
+    
+    # Use trailing slash in base_url to prevent redirect issues
+    async with AsyncClient(app=app, base_url="http://test/", follow_redirects=True) as ac:
         yield ac
+    
+    # Clear all dependency overrides
     app.dependency_overrides.clear()
 
 @pytest.fixture
