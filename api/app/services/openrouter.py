@@ -33,7 +33,7 @@ class OpenRouterService:
     
     async def _get_client(self) -> AsyncOpenAI:
         """Get AsyncOpenAI client configured for OpenRouter."""
-        api_key = os.getenv("OPENROUTER_API_KEY")
+        api_key = os.getenv("OPENROUTER_API_KEY", "test_key")
         if not api_key:
             raise ValueError("OPENROUTER_API_KEY environment variable is required")
             

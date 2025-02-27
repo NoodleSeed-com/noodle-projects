@@ -37,6 +37,8 @@ async def setup_database():
 async def db_session(setup_database):
     """Create a test database session."""
     async with TestingSessionLocal() as session:
+        # Start with a clean session - commit any pending data
+        await session.commit()
         yield session
 
 @pytest.fixture
@@ -50,15 +52,52 @@ def test_project():
 @pytest.fixture
 def mock_openrouter():
     """Mock OpenRouter service for testing."""
+    # Create a simple mock for the OpenRouterService
+    class MockOpenRouterService:
+        def __init__(self):
+            self._client_initialized = True
+            self.client = MagicMock()
+            # This attribute will be set by each test
+            self._file_changes = []
+        
+        async def get_file_changes(self, project_context, change_request, current_files):
+            # Record the call arguments
+            self.last_call = {
+                "project_context": project_context,
+                "change_request": change_request,
+                "current_files": current_files
+            }
+            # Return the preconfigured changes
+            return self._file_changes
+    
+    # Create a single instance to use for all tests
+    mock_service = MockOpenRouterService()
+    
+    # Create a mock to configure and track calls
     mock = MagicMock()
-    mock.get_file_changes = AsyncMock(return_value=[])
+    # When the mock's return_value is set, update the service's response
+    def update_file_changes(value):
+        mock_service._file_changes = value
+    mock.get_file_changes.return_value = []
+    mock.get_file_changes.side_effect = lambda *args, **kwargs: update_file_changes(mock.get_file_changes.return_value) or mock.get_file_changes.return_value
     
-    async def mock_service():
-        return mock
+    # Override the dependency
+    async def get_mock_service():
+        return mock_service
     
-    app.dependency_overrides[get_openrouter] = mock_service
+    # Store original dependency
+    original = app.dependency_overrides.get(get_openrouter)
+    
+    # Override dependency
+    app.dependency_overrides[get_openrouter] = get_mock_service
+    
     yield mock
-    app.dependency_overrides.clear()
+    
+    # Restore original state
+    if original:
+        app.dependency_overrides[get_openrouter] = original
+    else:
+        app.dependency_overrides.pop(get_openrouter, None)
 
 @pytest.fixture
 def client(db_session):

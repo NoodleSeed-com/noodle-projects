@@ -7,7 +7,7 @@ from uuid import uuid4
 from ...models.project import Project
 from ...models.version import Version
 from ...models.file import File
-from ...models.events import create_initial_version
+from ...crud.version.template import create_initial_version
 
 @pytest.mark.asyncio
 async def test_create_initial_version(mock_db_session):
