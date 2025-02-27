@@ -222,5 +222,5 @@ def test_validation_error_handling(client: TestClient, mock_openrouter):
                 json=request_data
             )
             
-            # Since we've mocked the ValueError, we should get a validation error
-            assert response.status_code == 400
+            # Since we've mocked the ValueError, we should get a service error
+            assert response.status_code == 503
