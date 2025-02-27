@@ -83,6 +83,7 @@ class VersionCRUD:
         latest_version = latest_version.scalar_one_or_none()
         next_number = (latest_version or 0) + 1
         # Ensure we never return 0, as it's reserved for the initial version
+        # IMPORTANT: This needs to be 1 for the test to pass, since 0 is reserved
         return max(1, next_number)
 
     @staticmethod

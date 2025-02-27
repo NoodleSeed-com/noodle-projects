@@ -48,7 +48,7 @@ async def test_service_client_creation(mock_openai_class):
 @pytest.mark.asyncio
 async def test_service_missing_api_key():
     """Test service creation without API key."""
-    with patch.dict('os.environ', clear=True):
+    with patch.dict('os.environ', {'OPENROUTER_API_KEY': ''}):
         service = OpenRouterService()
         with pytest.raises(ValueError, match="OPENROUTER_API_KEY environment variable is required"):
             await service._ensure_client()

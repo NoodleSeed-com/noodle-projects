@@ -52,34 +52,11 @@ def test_project():
 @pytest.fixture
 def mock_openrouter():
     """Mock OpenRouter service for testing."""
-    # Create a simple mock for the OpenRouterService
-    class MockOpenRouterService:
-        def __init__(self):
-            self._client_initialized = True
-            self.client = MagicMock()
-            # This attribute will be set by each test
-            self._file_changes = []
-        
-        async def get_file_changes(self, project_context, change_request, current_files):
-            # Record the call arguments
-            self.last_call = {
-                "project_context": project_context,
-                "change_request": change_request,
-                "current_files": current_files
-            }
-            # Return the preconfigured changes
-            return self._file_changes
+    # Create a mock service directly
+    mock_service = AsyncMock()
     
-    # Create a single instance to use for all tests
-    mock_service = MockOpenRouterService()
-    
-    # Create a mock to configure and track calls
-    mock = MagicMock()
-    # When the mock's return_value is set, update the service's response
-    def update_file_changes(value):
-        mock_service._file_changes = value
-    mock.get_file_changes.return_value = []
-    mock.get_file_changes.side_effect = lambda *args, **kwargs: update_file_changes(mock.get_file_changes.return_value) or mock.get_file_changes.return_value
+    # Default behavior for get_file_changes returns an empty list of changes
+    mock_service.get_file_changes.return_value = []
     
     # Override the dependency
     async def get_mock_service():
@@ -91,7 +68,7 @@ def mock_openrouter():
     # Override dependency
     app.dependency_overrides[get_openrouter] = get_mock_service
     
-    yield mock
+    yield mock_service
     
     # Restore original state
     if original:

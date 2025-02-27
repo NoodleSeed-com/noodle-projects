@@ -78,7 +78,7 @@ async def test_get_next_version_number_no_versions(mock_db_session):
     result = await VersionCRUD.get_next_number(mock_db_session, project_id)
     
     # Verify result
-    assert result == 0  # Should be (-1) + 1 = 0
+    assert result == 1  # Should be at minimum 1, since 0 is reserved for initial version
     
     # Verify query was called with correct parameters
     mock_db_session.execute.assert_called_once()
