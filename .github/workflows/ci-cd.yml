@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 env:
-  PYTHON_VERSION: '3.11'
+  PYTHON_VERSION: '3.13'
   VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
   OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -20,6 +20,20 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 54322:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v3
       
@@ -34,12 +48,23 @@ jobs:
           cd api
           pip install -r requirements.txt
           
+      - name: Setup test environment
+        run: |
+          cd api
+          cp tests/unit_tests/test.env .env
+          
       - name: Run unit tests
         env:
           TESTING: true
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:54322/postgres
+          DB_HOST: localhost
+          DB_PORT: 54322
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          DB_NAME: postgres
         run: |
           cd api
-          pytest app/models/tests/ app/routes/tests/ app/services/tests/ app/crud/tests/ app/schemas/tests/ -v --cov=app --cov-append
+          pytest app/models/tests/ app/routes/tests/ app/services/tests/ app/crud/tests/ app/schemas/tests/ -v --cov=app --cov-report=xml --cov-append
           
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v3
