@@ -164,7 +164,7 @@ jobs:
           STAGING_URL: ${{ steps.deploy-staging.outputs.deployment_url }}
         run: |
           cd api
-          pytest tests/integration_tests/ -v
+          pytest tests/integration_tests/ -v --timeout=600  # 10 minute timeout
     outputs:
       deployment_url: ${{ steps.deploy-staging.outputs.deployment_url }}
 
