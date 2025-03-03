@@ -10,7 +10,7 @@ from ...models.project import Project
 from ...schemas.version import VersionResponse, VersionListItem
 from ...schemas.file import FileResponse
 from ...schemas.common import FileChange
-from .file_operations import validate_file_changes, apply_file_changes
+from ...crud.files import validate_file_changes, apply_file_changes
 from .template import create_initial_version
 
 class VersionCRUD:

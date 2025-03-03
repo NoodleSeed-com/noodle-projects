@@ -4,7 +4,6 @@ import pytest_asyncio
 from pathlib import Path
 from dotenv import load_dotenv
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 import asyncio
 
 # Load environment variables before importing app modules
@@ -18,6 +17,7 @@ from app.models.base import Base
 from app.services.openrouter import OpenRouterService
 from app.schemas.common import FileChange, AIResponse
 from typing import List
+from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 
 @pytest.fixture(scope="function", autouse=True)
 def event_loop():
@@ -49,9 +49,9 @@ async def test_engine():
     engine = create_async_engine(
         str(settings.DATABASE_URL), 
         echo=True,
-        poolclass=None,  # Disable connection pooling for tests
-        pool_pre_ping=True,  # Verify connections before use
-        future=True  # Use the future API for better compatibility
+        poolclass=None,        # Disable connection pooling for tests
+        pool_pre_ping=True,    # Verify connections before use
+        future=True            # Use the future API for better compatibility
     )
     
     # Create tables
@@ -230,7 +230,7 @@ async def client(db_session):
     If USE_REAL_SERVICES environment variable is set to 'true', this will use
     the real OpenRouter service instead of the mock.
     """    
-    # Create a function that will return our existing db_session directly (not as generator)
+    # Create a function that will return db session directly (not a generator)
     async def override_get_db():
         return db_session
     

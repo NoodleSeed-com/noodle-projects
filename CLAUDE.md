@@ -15,11 +15,12 @@
 - Run tools without installing: `uvx [tool]` (e.g., `uvx black .`)
 
 ## MCP Commands
-- Test MCP server: `PYTHONPATH=. python api/test_mcp_local.py`
-- Test MCP with Supabase (REST API): `PYTHONPATH=. python api/test_mcp_rest.py`
-- Test MCP with direct Supabase connection: `PYTHONPATH=. python api/check_supabase_conn.py`
-- Run MCP server with REST API: `PYTHONPATH=. mcp dev api/app/mcp_server_rest.py`
-- Run MCP server with direct connection: `PYTHONPATH=. mcp dev api/app/mcp_server.py`
+- Test MCP server: `pytest api/tests/test_mcp.py -v`
+- Test MCP with specific connection: `NOODLE_DB_CONNECTION_TYPE=supabase_rest pytest api/tests/test_mcp.py::test_health_check -v`
+- Check Supabase connection: `PYTHONPATH=. python api/check_supabase_conn.py`
+- Run unified MCP server:
+  - Direct connection: `PYTHONPATH=. mcp dev api/app/mcp_server_unified.py`
+  - REST API connection: `NOODLE_DB_CONNECTION_TYPE=supabase_rest PYTHONPATH=. mcp dev api/app/mcp_server_unified.py`
 - Inspect MCP server: `mcp inspect http://localhost:8555`
 
 ## Supabase Connection
