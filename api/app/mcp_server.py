@@ -75,13 +75,12 @@ async def list_projects(
         List of projects with pagination info
     """
     try:
-        crud = ProjectCRUD(session)
-        pagination = {"skip": skip, "limit": limit}
-        
-        projects, total = await crud.get_multi(
-            active=None if include_inactive else True,
-            **pagination
+        projects = await ProjectCRUD.get_multi(
+            db=session,
+            skip=skip,
+            limit=limit
         )
+        total = len(projects)
         
         return {
             "success": True,
@@ -111,8 +110,7 @@ async def get_project(
         Project details
     """
     try:
-        crud = ProjectCRUD(session)
-        project = await crud.get(project_id)
+        project = await ProjectCRUD.get(db=session, project_id=project_id)
         
         if not project:
             return {
@@ -146,13 +144,12 @@ async def create_project(
         Created project details
     """
     try:
-        crud = ProjectCRUD(session)
         project_create = ProjectCreate(
             name=name,
             description=description
         )
         
-        project = await crud.create(project_create)
+        project = await ProjectCRUD.create(db=session, project=project_create)
         
         return {
             "success": True,

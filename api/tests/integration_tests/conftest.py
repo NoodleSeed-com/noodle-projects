@@ -209,22 +209,34 @@ async def client(db_session):
     
     This uses the db_session fixture which handles transaction management,
     including proper nested transaction support for version creation.
+    
+    If USE_REAL_SERVICES environment variable is set to 'true', this will use
+    the real OpenRouter service instead of the mock.
     """    
     # Create a function that will use our existing db_session
     async def override_get_db():
         yield db_session
     
-    # Override the OpenRouter service with our test version
-    async def get_test_openrouter():
-        return TestOpenRouterService()
-    
-    # Set up overrides
+    # Set up dependency overrides
     app.dependency_overrides[get_db] = override_get_db
-    from app.services.openrouter import get_openrouter
-    app.dependency_overrides[get_openrouter] = get_test_openrouter
+    
+    # Check if we should use real services
+    use_real_services = os.environ.get('USE_REAL_SERVICES', '').lower() == 'true'
+    
+    # Only mock OpenRouter if we're not using real services
+    if not use_real_services:
+        # Override the OpenRouter service with our test version
+        async def get_test_openrouter():
+            return TestOpenRouterService()
+        
+        from app.services.openrouter import get_openrouter
+        app.dependency_overrides[get_openrouter] = get_test_openrouter
     
     # Use trailing slash in base_url to prevent redirect issues
-    async with AsyncClient(app=app, base_url="http://test/", follow_redirects=True) as ac:
+    # httpx AsyncClient doesn't accept 'app' parameter directly, mount it on transport
+    from httpx import ASGITransport
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test/", follow_redirects=True) as ac:
         yield ac
     
     # Clear all dependency overrides
