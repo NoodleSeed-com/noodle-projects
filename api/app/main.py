@@ -3,8 +3,10 @@ Main application module.
 """
 from fastapi import FastAPI, Request, status, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 
 from .config import settings
 from .routes import router as api_router
@@ -16,6 +18,9 @@ app = FastAPI(
     version=settings.VERSION,
     openapi_url=f"{settings.API_PREFIX}/openapi.json"
 )
+
+# Mount static files
+app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 # Exception handlers
 @app.exception_handler(NoodleError)
@@ -75,3 +80,8 @@ app.include_router(
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}
+
+@app.get("/api-tester", response_class=FileResponse)
+async def get_api_tester():
+    """Serve the API tester HTML page."""
+    return Path(__file__).parent / "static" / "api-tester.html"

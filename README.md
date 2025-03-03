@@ -73,32 +73,280 @@ This service provides a RESTful API for:
 
 ## API Documentation
 
-Once the server is running, you can access:
+### Base URL
+
+```
+http://127.0.0.1:8000
+```
+
+### Authentication
+
+Currently, the API does not require authentication.
+
+### API Endpoints
+
+#### Health Check
+
+**Endpoint:** `GET /health`
+
+**Description:** Check if the API is running.
+
+**Response:**
+```json
+{
+  "status": "healthy"
+}
+```
+
+#### Projects
+
+##### List Projects
+
+**Endpoint:** `GET /api/projects/`
+
+**Description:** Get a list of all projects.
+
+**Response:**
+```json
+[
+  {
+    "name": "Project Name",
+    "description": "Project Description",
+    "id": "uuid-string",
+    "latest_version_number": 0,
+    "active": true,
+    "created_at": "2025-02-28T01:17:42.699132Z",
+    "updated_at": "2025-02-28T01:17:42.699132Z"
+  },
+  ...
+]
+```
+
+##### Create Project
+
+**Endpoint:** `POST /api/projects/`
+
+**Description:** Create a new project.
+
+**Request Body:**
+```json
+{
+  "name": "My Test Project",
+  "description": "A project created for testing"
+}
+```
+
+**Response:**
+```json
+{
+  "name": "My Test Project",
+  "description": "A project created for testing",
+  "id": "uuid-string",
+  "latest_version_number": 0,
+  "active": true,
+  "created_at": "2025-02-28T01:18:56.895531Z",
+  "updated_at": "2025-02-28T01:18:56.895531Z"
+}
+```
+
+**Notes:** 
+- A version 0 is automatically created when a project is created.
+- The `description` field is optional.
+
+##### Get Project
+
+**Endpoint:** `GET /api/projects/{project_id}`
+
+**Description:** Get details of a specific project.
+
+**Response:**
+```json
+{
+  "name": "Project Name",
+  "description": "Project Description",
+  "id": "uuid-string",
+  "latest_version_number": 0,
+  "active": true,
+  "created_at": "2025-02-28T01:17:42.699132Z",
+  "updated_at": "2025-02-28T01:17:42.699132Z"
+}
+```
+
+##### Update Project
+
+**Endpoint:** `PUT /api/projects/{project_id}`
+
+**Description:** Update a project's details.
+
+**Request Body:**
+```json
+{
+  "name": "Updated Project Name",
+  "description": "This project has been updated"
+}
+```
+
+**Response:** Updated project object.
+
+##### Delete Project
+
+**Endpoint:** `DELETE /api/projects/{project_id}`
+
+**Description:** Soft delete a project by setting active=false.
+
+**Response:** The deactivated project object.
+
+#### Versions
+
+##### List Versions
+
+**Endpoint:** `GET /api/projects/{project_id}/versions/`
+
+**Description:** Get a list of all versions for a project.
+
+**Response:**
+```json
+[
+  {
+    "id": "uuid-string",
+    "version_number": 0,
+    "name": "Initial Version"
+  },
+  ...
+]
+```
+
+##### Get Version
+
+**Endpoint:** `GET /api/projects/{project_id}/versions/{version_number}`
+
+**Description:** Get details of a specific version.
+
+**Response:**
+```json
+{
+  "id": "uuid-string",
+  "project_id": "project-uuid-string",
+  "version_number": 0,
+  "name": "Initial Version",
+  "parent_id": null,
+  "parent_version": null,
+  "created_at": "2025-02-28T01:17:42.699132Z",
+  "updated_at": "2025-02-28T01:17:42.699132Z",
+  "active": true,
+  "files": [
+    {
+      "id": "file-uuid-string",
+      "version_id": "version-uuid-string",
+      "path": "src/App.tsx",
+      "content": "// File content here",
+      "created_at": "2025-02-28T01:17:42.699132Z",
+      "updated_at": "2025-02-28T01:17:42.699132Z"
+    },
+    ...
+  ]
+}
+```
+
+##### Create Version
+
+**Endpoint:** `POST /api/projects/{project_id}/versions/`
+
+**Description:** Create a new version based on an existing version.
+
+**Request Body:**
+```json
+{
+  "name": "New Version",
+  "parent_version_number": 0,
+  "project_context": "This is a React project with a simple component structure.",
+  "change_request": "Add a new button component with onClick functionality."
+}
+```
+
+**Response:** The newly created version object with files.
+
+**Notes:**
+- This endpoint requires the OpenRouter service to generate file changes.
+- Currently, this endpoint returns a 503 Service Unavailable error due to issues with the OpenRouter service.
+- All fields in the request body are required.
+- `parent_version_number` specifies which version to base the new version on.
+- `project_context` provides context about the project for the AI.
+- `change_request` specifies what changes to make in the new version.
+
+### Error Handling
+
+The API uses standard HTTP status codes:
+
+- 200: Success
+- 400: Bad Request (validation errors)
+- 403: Forbidden (e.g., trying to modify an inactive project)
+- 404: Not Found (resource doesn't exist)
+- 422: Unprocessable Entity (request validation errors)
+- 503: Service Unavailable (e.g., OpenRouter service unavailable)
+
+Error responses have the following format:
+
+```json
+{
+  "detail": "Error message"
+}
+```
+
+### Current Limitations
+
+- Creating new versions through the API requires the OpenRouter service
+- OpenRouter service is currently returning a 503 Service Unavailable error
+- All other API endpoints are working correctly
+
+### Example Usage (Python)
+
+```python
+import requests
+
+BASE_URL = "http://127.0.0.1:8000"
+
+# Create a new project
+project_data = {
+    "name": "My Test Project",
+    "description": "A project created for testing"
+}
+response = requests.post(f"{BASE_URL}/api/projects/", json=project_data)
+project = response.json()
+project_id = project["id"]
+
+# List versions of the project
+response = requests.get(f"{BASE_URL}/api/projects/{project_id}/versions/")
+versions = response.json()
+version_number = versions[0]["version_number"]  # Usually 0 for a new project
+
+# Get details of a specific version
+response = requests.get(f"{BASE_URL}/api/projects/{project_id}/versions/{version_number}")
+version_details = response.json()
+
+# Try to create a new version (will fail with 503 until OpenRouter service is fixed)
+new_version_data = {
+    "name": "New Version",
+    "parent_version_number": version_number,
+    "project_context": "This is a React project with a simple component structure.",
+    "change_request": "Add a new button component with onClick functionality."
+}
+try:
+    response = requests.post(
+        f"{BASE_URL}/api/projects/{project_id}/versions/",
+        json=new_version_data
+    )
+    if response.status_code == 503:
+        print("OpenRouter service unavailable")
+    else:
+        new_version = response.json()
+except Exception as e:
+    print(f"Error creating version: {e}")
+```
+
+You can also access:
 - Interactive API documentation (Swagger UI) at http://localhost:8000/docs
 - Alternative API documentation (ReDoc) at http://localhost:8000/redoc
-
-## Core API Endpoints
-
-### Projects
-
-- `GET /api/v1/projects` - List all active projects
-- `POST /api/v1/projects` - Create a new project
-- `GET /api/v1/projects/{project_id}` - Get a specific project
-- `PUT /api/v1/projects/{project_id}` - Update a project
-- `DELETE /api/v1/projects/{project_id}` - Soft delete a project
-
-### Project Versions
-
-- `GET /api/v1/projects/{project_id}/versions` - List all versions of a project
-- `POST /api/v1/projects/{project_id}/versions` - Create a new version
-- `GET /api/v1/projects/{project_id}/versions/{version_number}` - Get a specific version
-- `GET /api/v1/projects/{project_id}/versions/{version_number}/files` - List all files in a version
-- `GET /api/v1/projects/{project_id}/versions/{version_number}/files/{file_path}` - Get a specific file
-
-### Version Creation
-
-- `POST /api/v1/projects/{project_id}/versions/{version_number}/files` - Create or update a file
-- `POST /api/v1/projects/{project_id}/versions` - Create a new version from a parent version
 
 ## Database Schema
 

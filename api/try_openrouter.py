@@ -1,16 +1,32 @@
 """Script to test OpenRouter service with Gemini."""
 import os
+import asyncio
+from dotenv import load_dotenv
 from app.services.openrouter import OpenRouterService
-from app.models.project import FileResponse
+from app.schemas.file import FileResponse
 from uuid import uuid4
 
-def main():
+# Load environment variables from .env file
+load_dotenv("api/.env")
+
+async def main():
     """Test the OpenRouter service with a real request."""
-    # Set API key
-    os.environ["OPENROUTER_API_KEY"] = "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"
+    # Use the new API key directly
+    api_key = "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"
+    
+    print(f"Using API key: {api_key[:10]}...")
+    
+    # Set API key directly
+    os.environ["OPENROUTER_API_KEY"] = api_key
+    
+    # Print full API key for debugging
+    print(f"Full API key: {api_key}")
     
     # Create service instance
     service = OpenRouterService()
+    
+    # Initialize the client
+    await service._ensure_client()
     
     # Test data
     project_context = """
@@ -47,7 +63,7 @@ export default HelloWorld;
         print("Requesting changes from OpenRouter (Gemini)...")
         
         # Get raw completion first
-        completion = service.client.chat.completions.create(
+        completion = await service.client.chat.completions.create(
             model="google/gemini-2.0-flash-001",
             messages=[
                 {
@@ -75,7 +91,7 @@ export default HelloWorld;
         print(completion.choices[0].message.content)
         
         # Process changes through service
-        changes = service.get_file_changes(project_context, change_request, current_files)
+        changes = await service.get_file_changes(project_context, change_request, current_files)
         
         print("\nParsed Changes:")
         for change in changes:
@@ -88,4 +104,4 @@ export default HelloWorld;
         print(f"Error: {e}")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

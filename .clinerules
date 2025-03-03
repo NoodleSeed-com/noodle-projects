@@ -22,134 +22,22 @@
 - Follow PEP 8 guidelines
 
 ### Test Organization Standards
-1. Co-located Tests:
-   ```
-   api/app/[module]/
-   ├── __init__.py
-   ├── module.py
-   └── tests/
-       ├── __init__.py
-       ├── conftest.py
-       └── test_*.py
-   ```
-
-2. Test File Naming:
-   - test_*.py for test files
-   - conftest.py for fixtures
-   - Clear relationship to tested code
-
-3. Test Categories:
-   - Unit tests with source code
-   - Integration tests in api/tests/
-
-4. Test Documentation:
-   - Clear docstrings
-   - Verification points
-   - Setup requirements
-   - Expected outcomes
+- Co-located tests with source code
+- Clear test file naming (test_*.py)
+- Unit tests with source code, integration tests in api/tests/
+- Comprehensive test documentation
 
 ### Database Test Setup
-1. Test Database Requirements:
-   - Use separate test database
-   - Handle foreign key constraints
-   - Proper transaction isolation
-   - Clean state between tests
-
-2. Fixture Hierarchy:
-   ```python
-   @pytest.fixture(scope="session")
-   def test_engine():
-       """Database engine for tests."""
-       
-   @pytest.fixture(scope="module")
-   def test_db(test_engine):
-       """Module database from engine."""
-       
-   @pytest.fixture
-   def db_session(test_db):
-       """Test transaction from database."""
-   ```
-
-3. Test Isolation:
-   - Use transaction savepoints
-   - Rollback after each test
-   - No shared state
-   - Clean resources
-
-4. Error Handling:
-   - Proper constraint handling
-   - Transaction management
-   - Resource cleanup
-   - State reset
-
-5. SQLAlchemy Session Management:
-   ```python
-   # Create and commit
-   db_session.add(project)
-   db_session.commit()
-   db_session.refresh(project)  # Reload to get generated values
-   
-   # Verify state after commit
-   assert len(project.versions) == 1
-   initial_version = project.versions[0]
-   ```
-
-6. Event Listener Testing:
-   - Use commit() to trigger after_insert events
-   - Refresh objects after commit to load relationships
-   - Verify event results after commit
-   - Example:
-   ```python
-   # Create project triggers version creation
-   project = Project(name="Test")
-   db_session.add(project)
-   db_session.commit()
-   db_session.refresh(project)
-   
-   # Verify event created version
-   assert len(project.versions) == 1
-   assert project.versions[0].version_number == 0
-   ```
-
-7. Common Pitfalls:
-   - Using flush() when commit() is needed for events
-   - Not refreshing after commits
-   - Duplicate version numbers
-   - Missing relationship loads
-   - Not handling unique constraints
+- Use separate test database
+- Handle foreign key constraints
+- Proper transaction isolation
+- Clean state between tests
 
 ### CRUD Module Organization
-1. Package Structure:
-   - Split large CRUD modules (>10,000 bytes) into packages
-   - Example structure:
-     ```
-     api/app/crud/[module]/
-     ├── __init__.py      # Public interface
-     ├── crud.py          # Core operations
-     └── [feature].py     # Specific features
-     ```
-   - Keep files under 5,000 bytes when possible
-   - Maintain clear public interface in __init__.py
-
-2. Responsibility Separation:
-   - Core CRUD operations in crud.py
-   - Feature-specific logic in dedicated files
-   - Clear separation of concerns
-   - Single responsibility per module
-
-3. Implementation Requirements:
-   - Document module responsibilities
-   - Use __init__.py to expose public API
-   - Maintain backward compatibility
-   - Follow consistent naming patterns
-   - Add proper type hints and docstrings
-
-4. When to Apply:
-   - CRUD modules over 10,000 bytes
-   - Multiple distinct responsibilities
-   - Complex validation logic
-   - Separate concerns exist
-   - Testing would benefit from separation
+- Split large CRUD modules into packages
+- Maintain clear public interface in __init__.py
+- Separate responsibilities into dedicated files
+- Keep files under 5,000 bytes when possible
 
 ### API Design
 - RESTful endpoints
@@ -157,163 +45,29 @@
 - Consistent response formats
 - Proper status code usage
 
-### Database
-- Use UUID primary keys
-- Enable Row Level Security
-- Implement soft deletion through active flag
-- Maintain referential integrity
-- Use appropriate indexes
-
-### Documentation
-- Document all schema changes
-- Keep API documentation up to date
-- Document design decisions
-
-### Response Patterns
-- Use Pydantic models for all responses
-- Keep SQLAlchemy models separate from response DTOs
-- Include complete object graphs in detailed responses
-- Use simplified responses for list endpoints
-- Document all response fields and their types
-
-### Version Control
-- Use meaningful commit messages
-- Document breaking changes
-- Follow semantic versioning
-- Track version relationships
-
-### Testing
-- Write unit tests for API endpoints
-- Test database operations
-- Validate schema constraints
-- Test error handling
-
-### Service Integration Standards
-1. Dependency Injection:
-   - Define service dependencies at module level
-   - Use get_* functions for FastAPI dependencies
-   - Import dependencies, not service instances
-
-2. Service Testing:
-   - Mock services through dependency injection
-   - Override dependencies in test fixtures
-   - Clear overrides after tests
-   - Use flexible assertion patterns
-
-3. Service Context:
-   - Pass relevant context to services
-   - Include current state in service calls
-   - Document required context parameters
-
-### Service Error Handling
-1. Status Code Mapping:
-   - 400: Validation errors (ValueError)
-   - 403: Inactive project operations
-   - 404: Resource not found
-   - 409: Integrity constraint violations
-   - 422: Request validation errors
-   - 503: Service unavailable
-
-2. Service Layer:
-   - Validate inputs before processing
-   - Raise appropriate exceptions
-   - Maintain consistent error messages
-   - Document error conditions
-
-3. Error Propagation:
-   - Catch errors at appropriate layer
-   - Convert to HTTP status codes
-   - Maintain transaction integrity
-   - Roll back on failure
-
-4. Testing Requirements:
-   - Test all error paths
-   - Verify error propagation
-   - Check transaction rollback
-   - Validate error responses
-   - Mock service errors
-
-## Project Dependencies
-- Python 3.11+
-- FastAPI
-- SQLAlchemy
-- Pydantic v2
-- PostgreSQL
-- Supabase
-
-## Best Practices
-
-### Microservice Best Practices Analysis
-- Comprehensive analysis of project best practices in systemPatterns.md
-- Key areas analyzed: structure, API design, database, error handling, testing, async implementation, code quality, security
-- Identified strengths and improvement areas for each category
-- Recommendations for addressing SQLAlchemy event listener issues
-- Plan for API versioning and enhanced error types
-- Security improvements including rate limiting and authentication
-
-### API Implementation
-- Implement proper validation
-- Handle errors consistently
-- Use dependency injection
-
-### Database Operations
-- Use connection pooling
-- Implement transactions
-- Handle concurrent access
-- Optimize queries
-
-### Security Guidelines
-- Validate all inputs
-- Use environment variables
-- Implement proper access controls
-- Regular security audits
+### API Endpoints
+- `GET /health` - Health check
+- `GET /api/projects/` - List projects
+- `POST /api/projects/` - Create project
+- `GET /api/projects/{project_id}` - Get project
+- `PUT /api/projects/{project_id}` - Update project
+- `DELETE /api/projects/{project_id}` - Soft delete project
+- `GET /api/projects/{project_id}/versions/` - List versions
+- `GET /api/projects/{project_id}/versions/{version_number}` - Get version
+- `POST /api/projects/{project_id}/versions/` - Create version
 
 ### Error Handling
-1. NoodleError Pattern:
-   - Use NoodleError as the standard application error
-   - All application-level validations should raise NoodleError
-   - Include error type and message in NoodleError
-   - Tests should expect NoodleError for application validations
-   - Only catch external errors (e.g., SQLAlchemy, FastAPI)
-
-2. Status Code Mapping:
-   - 400: NoodleError (ErrorType.VALIDATION)
-   - 403: NoodleError (ErrorType.PERMISSION)
-   - 404: NoodleError (ErrorType.NOT_FOUND)
-   - 409: IntegrityError (from SQLAlchemy)
-   - 422: RequestValidationError (from FastAPI)
-   - 503: NoodleError (ErrorType.DATABASE)
-
-3. Service Layer:
-   - Validate inputs using NoodleError
-   - Convert external errors to NoodleError when appropriate
-   - Maintain consistent error messages
-   - Document error conditions
-   - Use appropriate ErrorType
-
-4. Error Propagation:
-   - Catch errors at appropriate layer
-   - Convert to HTTP status codes
-   - Maintain transaction integrity
-   - Roll back on failure
-
-5. Testing Requirements:
-   - Test all error paths
-   - Use pytest.raises(NoodleError) for application validations
-   - Check error types and messages
-   - Verify error propagation
-   - Test external error handling
-   - Mock service errors
+- Use NoodleError as standard application error
+- Map error types to appropriate HTTP status codes
+- Validate inputs using NoodleError
+- Document error conditions
 
 ## CLI Commands
 
 ### Development Server
 ```bash
 # Start development server
-uvicorn api.app.main:app --reload
-
-# Run with specific host/port
-uvicorn api.app.main:app --host 0.0.0.0 --port 8000
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:54342/postgres uvicorn api.app.main:app --reload
 ```
 
 ### Database
@@ -321,10 +75,8 @@ uvicorn api.app.main:app --host 0.0.0.0 --port 8000
 # Apply migrations
 supabase db reset
 
-# Start Supabase
+# Start/Stop Supabase
 supabase start
-
-# Stop Supabase
 supabase stop
 ```
 
@@ -337,26 +89,7 @@ pytest
 pytest --cov=api/app api/tests/ -v
 
 # Run specific test category
-pytest api/app/models/tests/ -v                # Model tests
-pytest api/app/routes/tests/ -v                # Route tests
-pytest api/app/services/tests/ -v              # Service tests
-pytest api/tests/integration_tests/ -v         # Integration tests
-
-# Run with environment variables
-env $(cat api/tests/unit_tests/test.env | grep -v '^#' | xargs) pytest
-```
-
-### Environment
-```bash
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment
-source venv/bin/activate  # Unix
-venv\Scripts\activate     # Windows
-
-# Install dependencies
-pip install -r api/requirements.txt
+pytest api/app/models/tests/ -v
 ```
 
 ## Project Structure
@@ -364,47 +97,16 @@ pip install -r api/requirements.txt
 /
 ├── api/                      # FastAPI service
 │   ├── app/
-│   │   ├── __init__.py
 │   │   ├── config.py        # App & DB configuration
 │   │   ├── main.py         # FastAPI app setup
 │   │   ├── models/         # SQLAlchemy models
-│   │   │   ├── __init__.py
-│   │   │   ├── base.py
-│   │   │   ├── file.py
-│   │   │   ├── project.py
-│   │   │   ├── version.py
-│   │   │   └── tests/      # Model tests
 │   │   ├── routes/         # API endpoints
-│   │   │   ├── __init__.py
-│   │   │   ├── projects.py
-│   │   │   ├── versions.py
-│   │   │   └── tests/      # Route tests
 │   │   ├── schemas/        # Pydantic models
-│   │   │   ├── __init__.py
-│   │   │   ├── base.py
-│   │   │   ├── common.py
-│   │   │   ├── file.py
-│   │   │   ├── project.py
-│   │   │   └── version.py
 │   │   └── services/       # Business logic
-│   │       ├── __init__.py
-│   │       ├── openrouter.py
-│   │       └── tests/      # Service tests
 │   ├── tests/              # Integration tests
-│   │   ├── __init__.py
-│   │   └── integration_tests/
-│   ├── requirements.txt
-│   └── README.md
+│   └── requirements.txt
 ├── supabase/               # Database
-│   ├── seed.sql
-│   └── config.toml
 └── cline_docs/             # Memory Bank location
-    ├── projectbrief.md     # Core requirements, goals, project scope
-    ├── productContext.md   # Business logic, user experience, problem domain
-    ├── activeContext.md    # Current work state, recent changes, next steps
-    ├── systemPatterns.md   # Architecture, technical decisions, design patterns
-    ├── techContext.md      # Tech stack, setup, constraints, dependencies
-    └── progress.md         # Project status, working features, known issues
 ```
 
 ## Environment Variables
@@ -412,3 +114,4 @@ Required in api/.env:
 ```
 DATABASE_URL=postgresql://[user]:[password]@[host]:[port]/[database]
 OPENROUTER_API_KEY=[key]  # Required for AI code generation
+```
