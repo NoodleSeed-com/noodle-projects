@@ -21,7 +21,7 @@ show_missing = true
 directory = "htmlcov"
 
 [tool.pytest.ini_options]
-asyncio_mode = "auto"
+asyncio_mode = "strict"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "--cov=app --cov-report=term-missing --cov-report=html"

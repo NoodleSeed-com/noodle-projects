@@ -50,14 +50,22 @@ This service provides a RESTful API for:
    cd noodle-projects
    ```
 
-2. **Create a virtual environment and activate it**:
+2. **Install UV package manager**:
+   ```bash
+   pip install uv
+   ```
+
+3. **Create a virtual environment and install dependencies**:
+   ```bash
+   uv venv .venv
+   source .venv/bin/activate  # On Windows use: .venv\Scripts\activate
+   uv pip install -r requirements.lock
+   ```
+
+   Alternatively, you can use the traditional pip method:
    ```bash
    python -m venv venv
    source venv/bin/activate  # On Windows use: venv\Scripts\activate
-   ```
-
-3. **Install dependencies**:
-   ```bash
    pip install -r api/requirements.txt
    ```
 

@@ -19,15 +19,16 @@ from app.services.openrouter import OpenRouterService
 from app.schemas.common import FileChange, AIResponse
 from typing import List
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function", autouse=True)
 def event_loop():
-    """Create a session-scoped event loop for integration tests.
+    """Create a function-scoped event loop for integration tests.
     
-    For integration tests, we need a session-scoped event loop to work with
-    the session-scoped database fixtures. This ensures database connections
-    stay valid throughout the test session.
+    Using function scope with autouse=True prevents the
+    "RuntimeError: Task got Future attached to a different loop" issue
+    that occurs when mixing pytest-asyncio with SQLAlchemy async sessions.
     """
-    loop = asyncio.get_event_loop_policy().new_event_loop()
+    policy = asyncio.get_event_loop_policy()
+    loop = policy.new_event_loop()
     asyncio.set_event_loop(loop)
     yield loop
     # Clean up pending tasks
@@ -35,16 +36,23 @@ def event_loop():
     if pending:
         loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
     loop.close()
+    asyncio.set_event_loop(None)
 
-@pytest_asyncio.fixture(scope="session")
-async def test_engine(event_loop):
-    """Create a session-scoped SQLAlchemy engine.
+@pytest_asyncio.fixture(scope="function")
+async def test_engine():
+    """Create a function-scoped SQLAlchemy engine.
     
-    This fixture uses the session-scoped event_loop fixture to ensure
-    consistent loop usage throughout the test session.
+    Using function scope instead of session scope ensures a clean
+    database environment for each test and prevents event loop issues.
     """    
-    # Create the engine
-    engine = create_async_engine(str(settings.DATABASE_URL), echo=True)
+    # Create the engine with a smaller connection pool for tests
+    engine = create_async_engine(
+        str(settings.DATABASE_URL), 
+        echo=True,
+        poolclass=None,  # Disable connection pooling for tests
+        pool_pre_ping=True,  # Verify connections before use
+        future=True  # Use the future API for better compatibility
+    )
     
     # Create tables
     async with engine.begin() as conn:
@@ -55,12 +63,24 @@ async def test_engine(event_loop):
     # Clean up
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+    
+    # Properly close and dispose of the engine
     await engine.dispose()
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="function")
 async def async_session_factory(test_engine):
-    """Create a session factory."""
-    return async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    """Create a function-scoped session factory.
+    
+    This ensures each test has its own independent session factory
+    that isn't affected by other tests.
+    """
+    return async_sessionmaker(
+        bind=test_engine, 
+        class_=AsyncSession, 
+        expire_on_commit=False,
+        autoflush=False,
+        autocommit=False
+    )
 
 @pytest_asyncio.fixture(scope="function")
 async def db_session(async_session_factory):
@@ -72,9 +92,8 @@ async def db_session(async_session_factory):
     # Create a new session for each test
     session = async_session_factory()
     
-    # Start a transaction - use begin_nested() to allow nested transactions
-    # This creates a SAVEPOINT that can be used by the routes for transaction management
-    await session.begin_nested()
+    # Start a regular transaction
+    await session.begin()
     
     try:
         # Use the session in the test
@@ -82,10 +101,8 @@ async def db_session(async_session_factory):
     finally:
         # Rollback the transaction to undo any changes
         await session.rollback()
-        # Ensure any open transaction is closed
-        if session.in_transaction():
-            await session.close_all()
-        # Close the session
+        
+        # Ensure the session is properly closed
         await session.close()
 
 class TestOpenRouterService(OpenRouterService):
@@ -213,9 +230,9 @@ async def client(db_session):
     If USE_REAL_SERVICES environment variable is set to 'true', this will use
     the real OpenRouter service instead of the mock.
     """    
-    # Create a function that will use our existing db_session
+    # Create a function that will return our existing db_session directly (not as generator)
     async def override_get_db():
-        yield db_session
+        return db_session
     
     # Set up dependency overrides
     app.dependency_overrides[get_db] = override_get_db

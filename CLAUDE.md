@@ -1,12 +1,18 @@
 # Claude Assistant Guide for Noodle Projects
 
 ## Build & Test Commands
-- Install: `pip install -r api/requirements.txt`
+- Install with UV: `uv pip install -r requirements.lock`
+- Install with pip (legacy): `pip install -r api/requirements.txt`
 - Run server: `uvicorn app.main:app --reload`
 - Test all: `pytest`
 - Test with coverage: `pytest --cov=app --cov-report=term-missing --cov-report=html`
 - Test specific file: `pytest api/tests/path/to/test_file.py -v`
 - Test specific function: `pytest api/tests/path/to/test_file.py::test_function_name -v`
+
+## Dependency Management
+- Update lockfile: `uv pip compile api/requirements.txt -o requirements.lock`
+- Install from lockfile: `uv pip install -r requirements.lock`
+- Run tools without installing: `uvx [tool]` (e.g., `uvx black .`)
 
 ## MCP Commands
 - Test MCP server: `PYTHONPATH=. python api/test_mcp_local.py`

@@ -52,16 +52,21 @@ engine = create_async_engine(
     max_overflow=0,            # Prevent connection overflow
     pool_timeout=30,           # Connection timeout in seconds
     pool_recycle=1800,         # Recycle connections after 30 minutes
-    pool_pre_ping=True         # Verify connections before use
+    pool_pre_ping=True,        # Verify connections before use
+    future=True                # Use future API for better compatibility
 )
 
-AsyncSessionLocal = async_sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession, expire_on_commit=False)
+AsyncSessionLocal = async_sessionmaker(
+    autocommit=False, 
+    autoflush=False, 
+    bind=engine, 
+    class_=AsyncSession, 
+    expire_on_commit=False
+)
 
 
 async def get_db():
     """Dependency for getting database sessions."""
+    # Standard implementation - yield session from context manager
     async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
+        yield session
