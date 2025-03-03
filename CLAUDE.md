@@ -8,6 +8,11 @@
 - Test specific file: `pytest api/tests/path/to/test_file.py -v`
 - Test specific function: `pytest api/tests/path/to/test_file.py::test_function_name -v`
 
+## MCP Commands
+- Test MCP server: `PYTHONPATH=. python api/test_mcp_local.py`
+- Run MCP server in dev mode: `PYTHONPATH=. mcp dev api/app/mcp_server.py`
+- Inspect MCP server: `mcp inspect http://localhost:8555`
+
 ## Research Guidelines
 - Use Perplexity proactively for:
   - Troubleshooting known issues and workarounds

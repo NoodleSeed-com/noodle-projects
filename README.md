@@ -36,6 +36,12 @@ This service provides a RESTful API for:
   - Template-aware suggestions
   - Context-based code modifications
 
+- **MCP Integration** (Model Context Protocol)
+  - Direct AI assistant access to API functionality
+  - Identical business logic between REST and MCP
+  - Standardized tool descriptions and error handling
+  - Local MCP server testing capabilities
+
 ## Setup and Installation
 
 1. **Clone the repository**:
@@ -590,6 +596,26 @@ pytest api/tests/path/to/test_file.py -v
 
 # Run specific test function
 pytest api/tests/path/to/test_file.py::test_function_name -v
+```
+
+### Using MCP (Model Context Protocol)
+
+```bash
+# Install MCP dependencies
+pip install -r api/requirements.txt
+
+# Test MCP server locally
+PYTHONPATH=. python api/test_mcp_local.py
+
+# Run MCP server in development mode
+PYTHONPATH=. mcp dev api/app/mcp_server.py
+
+# Use with Claude Desktop
+# Configure Claude Desktop to use the MCP server:
+# 1. Locate the Claude Desktop config file:
+#    - macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
+#    - Windows: %APPDATA%\Claude\claude_desktop_config.json
+# 2. Add your MCP server to the configuration following the example in mcp_capability.md
 ```
 
 ### Code Style Guidelines
