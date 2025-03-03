@@ -1,3 +1,7 @@
+"""
+MCP server for the Noodle Projects API. This module provides tools for interacting with
+the Noodle Projects API using the Model Context Protocol (MCP).
+"""
 from mcp.server.fastmcp import FastMCP
 import logging
 from typing import Dict, List, Optional, Any, Union
@@ -6,21 +10,18 @@ from uuid import UUID
 # Import existing business logic
 from app.crud.project import ProjectCRUD
 from app.crud.version.crud import VersionCRUD
-from app.crud.file import FileCRUD
 from app.models.project import Project
 from app.models.version import Version
-from app.models.file import File
 from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse
-from app.schemas.version import VersionCreate, VersionResponse, VersionWithFilesResponse
-from app.schemas.file import FileCreate, FileUpdate, FileChange, FileResponse
-from app.schemas.common import PaginationParams
-from app.config import get_settings
-from app.services.openrouter import OpenRouterService
+from app.schemas.version import VersionCreate, VersionResponse, CreateVersionRequest
+from app.schemas.common import FileOperation, FileChange
+from app.config import settings
+from app.services.openrouter import OpenRouterService, get_openrouter
 from app.errors import NoodleError, ErrorType
 
 # Database
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.models.base import get_db
+from app.config import get_db
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -61,31 +62,32 @@ async def list_projects(
     session: AsyncSession,
     skip: Optional[int] = 0,
     limit: Optional[int] = 100,
-    search: Optional[str] = None
+    include_inactive: Optional[bool] = False
 ) -> Dict[str, Any]:
-    """List all projects with pagination and optional search.
+    """List all projects with pagination.
     
     Args:
         skip: Number of records to skip (pagination)
         limit: Maximum number of records to return
-        search: Optional search term for project name or description
+        include_inactive: Whether to include inactive (deleted) projects
         
     Returns:
         List of projects with pagination info
     """
     try:
         crud = ProjectCRUD(session)
-        pagination = PaginationParams(skip=skip, limit=limit)
+        pagination = {"skip": skip, "limit": limit}
+        
         projects, total = await crud.get_multi(
-            pagination=pagination,
-            search=search
+            active=None if include_inactive else True,
+            **pagination
         )
         
         return {
             "success": True,
             "data": {
                 "total": total,
-                "items": [p.model_dump() for p in projects],
+                "items": [project.model_dump() for project in projects],
                 "skip": skip,
                 "limit": limit
             }
@@ -132,15 +134,13 @@ async def get_project(
 async def create_project(
     session: AsyncSession,
     name: str,
-    description: Optional[str] = None,
-    is_active: Optional[bool] = True
+    description: Optional[str] = ""
 ) -> Dict[str, Any]:
-    """Create a new project.
+    """Create a new project with an initial version.
     
     Args:
         name: Project name
         description: Optional project description
-        is_active: Whether the project is active (default: True)
         
     Returns:
         Created project details
@@ -149,8 +149,7 @@ async def create_project(
         crud = ProjectCRUD(session)
         project_create = ProjectCreate(
             name=name,
-            description=description,
-            is_active=is_active
+            description=description
         )
         
         project = await crud.create(project_create)
@@ -220,7 +219,7 @@ async def delete_project(
     session: AsyncSession,
     project_id: UUID
 ) -> Dict[str, Any]:
-    """Delete a project by ID.
+    """Soft-delete a project by setting is_active to false.
     
     Args:
         project_id: UUID of the project to delete
@@ -230,9 +229,10 @@ async def delete_project(
     """
     try:
         crud = ProjectCRUD(session)
-        deleted = await crud.delete(project_id)
+        project_update = ProjectUpdate(is_active=False)
+        project = await crud.update(project_id, project_update)
         
-        if not deleted:
+        if not project:
             return {
                 "success": False,
                 "error": f"Project with ID {project_id} not found",
@@ -241,7 +241,7 @@ async def delete_project(
             
         return {
             "success": True,
-            "data": {"message": f"Project {project_id} deleted successfully"}
+            "data": project.model_dump()
         }
     except Exception as e:
         logger.error(f"Error in delete_project: {e}")
@@ -268,7 +268,6 @@ async def list_versions(
     """
     try:
         crud = VersionCRUD(session)
-        pagination = PaginationParams(skip=skip, limit=limit)
         
         # Check if project exists
         project_crud = ProjectCRUD(session)
@@ -282,7 +281,7 @@ async def list_versions(
         
         versions, total = await crud.get_project_versions(
             project_id=project_id,
-            pagination=pagination
+            pagination={"skip": skip, "limit": limit}
         )
         
         return {
@@ -302,69 +301,21 @@ async def list_versions(
 @with_session
 async def get_version(
     session: AsyncSession,
-    version_id: UUID,
-    include_files: Optional[bool] = False
+    project_id: UUID,
+    version_number: int,
+    include_files: Optional[bool] = True
 ) -> Dict[str, Any]:
-    """Get version details by ID.
+    """Get version details by project ID and version number.
     
     Args:
-        version_id: UUID of the version
+        project_id: UUID of the project
+        version_number: Version number
         include_files: Whether to include files in the response
         
     Returns:
         Version details with optional files
     """
     try:
-        crud = VersionCRUD(session)
-        version = await crud.get(version_id)
-        
-        if not version:
-            return {
-                "success": False,
-                "error": f"Version with ID {version_id} not found",
-                "error_type": ErrorType.NOT_FOUND.value
-            }
-
-        if include_files:
-            files = await crud.get_version_files(version_id)
-            version_data = VersionWithFilesResponse(
-                **version.model_dump(),
-                files=[FileResponse.model_validate(file) for file in files]
-            )
-            return {
-                "success": True,
-                "data": version_data.model_dump()
-            }
-        else:
-            return {
-                "success": True,
-                "data": version.model_dump()
-            }
-    except Exception as e:
-        logger.error(f"Error in get_version: {e}")
-        return {"success": False, "error": str(e)}
-
-@mcp.tool()
-@with_session
-async def create_version(
-    session: AsyncSession,
-    project_id: UUID,
-    parent_version_id: Optional[UUID] = None,
-    description: Optional[str] = None
-) -> Dict[str, Any]:
-    """Create a new version for a project.
-    
-    Args:
-        project_id: UUID of the project
-        parent_version_id: Optional UUID of the parent version
-        description: Optional version description
-        
-    Returns:
-        Created version details
-    """
-    try:
-        crud = VersionCRUD(session)
-        
         # Check if project exists
         project_crud = ProjectCRUD(session)
         project = await project_crud.get(project_id)
@@ -375,327 +326,117 @@ async def create_version(
                 "error_type": ErrorType.NOT_FOUND.value
             }
             
-        # Check parent version if provided
-        if parent_version_id:
-            parent_version = await crud.get(parent_version_id)
-            if not parent_version:
-                return {
-                    "success": False,
-                    "error": f"Parent version with ID {parent_version_id} not found",
-                    "error_type": ErrorType.NOT_FOUND.value
-                }
-                
-            # Ensure parent belongs to the same project
-            if parent_version.project_id != project_id:
-                return {
-                    "success": False,
-                    "error": "Parent version must belong to the same project",
-                    "error_type": ErrorType.VALIDATION_ERROR.value
-                }
-                
-        version_create = VersionCreate(
-            project_id=project_id,
-            parent_version_id=parent_version_id,
-            description=description
+        # Get the version
+        version_crud = VersionCRUD(session)
+        version = await version_crud.get_by_number(project_id, version_number)
+        
+        if not version:
+            return {
+                "success": False,
+                "error": f"Version {version_number} not found for project {project_id}",
+                "error_type": ErrorType.NOT_FOUND.value
+            }
+
+        response_data = version
+
+        # Include files if requested
+        if include_files:
+            files = await version_crud.get_version_files(version.id)
+            response_data = version_crud.serialize_version_with_files(version, files)
+            
+        return {
+            "success": True,
+            "data": response_data
+        }
+    except Exception as e:
+        logger.error(f"Error in get_version: {e}")
+        return {"success": False, "error": str(e)}
+
+@mcp.tool()
+@with_session
+async def create_version(
+    session: AsyncSession,
+    project_id: UUID,
+    name: str,
+    parent_version_number: int,
+    project_context: str,
+    change_request: str
+) -> Dict[str, Any]:
+    """Create a new version for a project with AI-generated changes.
+    
+    Args:
+        project_id: UUID of the project
+        name: Name for the new version
+        parent_version_number: Version number of the parent version
+        project_context: Context about the project for AI
+        change_request: Description of changes requested
+        
+    Returns:
+        Created version details with files
+    """
+    try:
+        # Check if project exists and is active
+        project_crud = ProjectCRUD(session)
+        project = await project_crud.get(project_id)
+        
+        if not project:
+            return {
+                "success": False,
+                "error": f"Project with ID {project_id} not found",
+                "error_type": ErrorType.NOT_FOUND.value
+            }
+            
+        if not project.is_active:
+            return {
+                "success": False,
+                "error": f"Project with ID {project_id} is inactive",
+                "error_type": ErrorType.FORBIDDEN.value
+            }
+            
+        # Get the parent version
+        version_crud = VersionCRUD(session)
+        parent_version = await version_crud.get_by_number(project_id, parent_version_number)
+        
+        if not parent_version:
+            return {
+                "success": False,
+                "error": f"Parent version {parent_version_number} not found for project {project_id}",
+                "error_type": ErrorType.NOT_FOUND.value
+            }
+            
+        # Prepare the version create request
+        version_request = CreateVersionRequest(
+            name=name,
+            parent_version_number=parent_version_number,
+            project_context=project_context,
+            change_request=change_request
         )
         
-        version = await crud.create(version_create)
+        # Get OpenRouter service
+        openrouter_service = await get_openrouter()
+        
+        # Create the new version
+        new_version = await version_crud.create_version_with_changes(
+            project_id=project_id,
+            parent_version_id=parent_version.id,
+            name=version_request.name,
+            project_context=version_request.project_context,
+            change_request=version_request.change_request,
+            ai_service=openrouter_service
+        )
+        
+        # Get the files for the new version
+        files = await version_crud.get_version_files(new_version.id)
+        
+        # Return the version with files
+        response_data = version_crud.serialize_version_with_files(new_version, files)
         
         return {
             "success": True,
-            "data": version.model_dump()
+            "data": response_data
         }
     except Exception as e:
         logger.error(f"Error in create_version: {e}")
-        return {"success": False, "error": str(e)}
-
-# File tools
-@mcp.tool()
-@with_session
-async def get_file(
-    session: AsyncSession,
-    version_id: UUID,
-    file_path: str
-) -> Dict[str, Any]:
-    """Get file content from a specific version.
-    
-    Args:
-        version_id: UUID of the version
-        file_path: Path of the file
-        
-    Returns:
-        File details and content
-    """
-    try:
-        crud = FileCRUD(session)
-        
-        # Check if version exists
-        version_crud = VersionCRUD(session)
-        version = await version_crud.get(version_id)
-        if not version:
-            return {
-                "success": False,
-                "error": f"Version with ID {version_id} not found",
-                "error_type": ErrorType.NOT_FOUND.value
-            }
-            
-        file = await crud.get_by_path(version_id, file_path)
-        
-        if not file:
-            return {
-                "success": False,
-                "error": f"File with path '{file_path}' not found in version {version_id}",
-                "error_type": ErrorType.NOT_FOUND.value
-            }
-            
-        return {
-            "success": True,
-            "data": {
-                "id": str(file.id),
-                "version_id": str(file.version_id),
-                "path": file.path,
-                "content": file.content,
-                "created_at": file.created_at.isoformat() if file.created_at else None,
-                "updated_at": file.updated_at.isoformat() if file.updated_at else None
-            }
-        }
-    except Exception as e:
-        logger.error(f"Error in get_file: {e}")
-        return {"success": False, "error": str(e)}
-
-@mcp.tool()
-@with_session
-async def list_files(
-    session: AsyncSession,
-    version_id: UUID
-) -> Dict[str, Any]:
-    """List all files in a version.
-    
-    Args:
-        version_id: UUID of the version
-        
-    Returns:
-        List of files in the version
-    """
-    try:
-        crud = VersionCRUD(session)
-        
-        # Check if version exists
-        version = await crud.get(version_id)
-        if not version:
-            return {
-                "success": False,
-                "error": f"Version with ID {version_id} not found",
-                "error_type": ErrorType.NOT_FOUND.value
-            }
-            
-        files = await crud.get_version_files(version_id)
-        
-        return {
-            "success": True,
-            "data": [
-                {
-                    "id": str(file.id),
-                    "version_id": str(file.version_id),
-                    "path": file.path,
-                    "created_at": file.created_at.isoformat() if file.created_at else None,
-                    "updated_at": file.updated_at.isoformat() if file.updated_at else None
-                }
-                for file in files
-            ]
-        }
-    except Exception as e:
-        logger.error(f"Error in list_files: {e}")
-        return {"success": False, "error": str(e)}
-
-@mcp.tool()
-@with_session
-async def update_file(
-    session: AsyncSession,
-    version_id: UUID,
-    file_path: str,
-    content: str
-) -> Dict[str, Any]:
-    """Update or create a file in a version.
-    
-    Args:
-        version_id: UUID of the version
-        file_path: Path of the file
-        content: New content for the file
-        
-    Returns:
-        Updated or created file details
-    """
-    try:
-        file_crud = FileCRUD(session)
-        version_crud = VersionCRUD(session)
-        
-        # Check if version exists
-        version = await version_crud.get(version_id)
-        if not version:
-            return {
-                "success": False,
-                "error": f"Version with ID {version_id} not found",
-                "error_type": ErrorType.NOT_FOUND.value
-            }
-            
-        # Check if file exists
-        existing_file = await file_crud.get_by_path(version_id, file_path)
-        
-        if existing_file:
-            # Update existing file
-            file_update = FileUpdate(content=content)
-            updated_file = await file_crud.update(existing_file.id, file_update)
-            
-            return {
-                "success": True,
-                "data": {
-                    "id": str(updated_file.id),
-                    "version_id": str(updated_file.version_id),
-                    "path": updated_file.path,
-                    "content": updated_file.content,
-                    "created_at": updated_file.created_at.isoformat() if updated_file.created_at else None,
-                    "updated_at": updated_file.updated_at.isoformat() if updated_file.updated_at else None,
-                    "operation": "UPDATE"
-                }
-            }
-        else:
-            # Create new file
-            file_create = FileCreate(
-                version_id=version_id,
-                path=file_path,
-                content=content
-            )
-            created_file = await file_crud.create(file_create)
-            
-            return {
-                "success": True,
-                "data": {
-                    "id": str(created_file.id),
-                    "version_id": str(created_file.version_id),
-                    "path": created_file.path,
-                    "content": created_file.content,
-                    "created_at": created_file.created_at.isoformat() if created_file.created_at else None,
-                    "updated_at": created_file.updated_at.isoformat() if created_file.updated_at else None,
-                    "operation": "CREATE"
-                }
-            }
-    except Exception as e:
-        logger.error(f"Error in update_file: {e}")
-        return {"success": False, "error": str(e)}
-
-@mcp.tool()
-@with_session
-async def delete_file(
-    session: AsyncSession,
-    version_id: UUID,
-    file_path: str
-) -> Dict[str, Any]:
-    """Delete a file from a version.
-    
-    Args:
-        version_id: UUID of the version
-        file_path: Path of the file to delete
-        
-    Returns:
-        Success status
-    """
-    try:
-        file_crud = FileCRUD(session)
-        version_crud = VersionCRUD(session)
-        
-        # Check if version exists
-        version = await version_crud.get(version_id)
-        if not version:
-            return {
-                "success": False,
-                "error": f"Version with ID {version_id} not found",
-                "error_type": ErrorType.NOT_FOUND.value
-            }
-            
-        # Check if file exists
-        existing_file = await file_crud.get_by_path(version_id, file_path)
-        
-        if not existing_file:
-            return {
-                "success": False,
-                "error": f"File with path '{file_path}' not found in version {version_id}",
-                "error_type": ErrorType.NOT_FOUND.value
-            }
-            
-        # Delete file
-        await file_crud.delete(existing_file.id)
-        
-        return {
-            "success": True,
-            "data": {
-                "message": f"File '{file_path}' deleted successfully from version {version_id}",
-                "file_id": str(existing_file.id),
-                "version_id": str(version_id),
-                "path": file_path
-            }
-        }
-    except Exception as e:
-        logger.error(f"Error in delete_file: {e}")
-        return {"success": False, "error": str(e)}
-
-# AI integration
-@mcp.tool()
-@with_session
-async def generate_file_changes(
-    session: AsyncSession,
-    version_id: UUID,
-    user_message: str
-) -> Dict[str, Any]:
-    """Generate file changes using AI based on user message.
-    
-    Args:
-        version_id: UUID of the version
-        user_message: User's request for file changes
-        
-    Returns:
-        Generated file changes
-    """
-    try:
-        version_crud = VersionCRUD(session)
-        
-        # Check if version exists
-        version = await version_crud.get(version_id)
-        if not version:
-            return {
-                "success": False,
-                "error": f"Version with ID {version_id} not found",
-                "error_type": ErrorType.NOT_FOUND.value
-            }
-            
-        # Get version files
-        files = await version_crud.get_version_files(version_id)
-        
-        # Initialize OpenRouter service
-        settings = get_settings()
-        openrouter_service = OpenRouterService(
-            api_key=settings.openrouter_api_key,
-            model=settings.openrouter_model
-        )
-        
-        # Prepare file data for AI
-        file_data = {file.path: file.content for file in files}
-        
-        # Generate changes
-        file_changes = await openrouter_service.generate_file_changes(
-            file_data=file_data,
-            user_message=user_message
-        )
-        
-        return {
-            "success": True,
-            "data": {
-                "version_id": str(version_id),
-                "file_changes": [change.model_dump() for change in file_changes]
-            }
-        }
-    except Exception as e:
-        logger.error(f"Error in generate_file_changes: {e}")
         return {"success": False, "error": str(e)}
 
 # Main entry point
