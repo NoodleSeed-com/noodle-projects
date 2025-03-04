@@ -26,10 +26,10 @@ class ProjectBase(BaseSchema):
 
 class Project(ProjectBase):
     """Project model using Pydantic v2."""
-    id: UUID
+    id: UUID = Field(default_factory=uuid4, description="Unique identifier")
     is_active: bool = Field(True, description="Whether the project is active")
-    created_at: datetime
-    updated_at: datetime
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
     
     # Note: This won't be populated by default from Supabase
     # It will be populated separately when needed

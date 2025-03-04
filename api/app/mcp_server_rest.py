@@ -11,7 +11,6 @@ import uuid
 import requests
 from typing import Dict, Any, List, Optional
 from pydantic import BaseModel, Field, root_validator
-import asyncio
 from datetime import datetime, timezone
 
 # Supabase configuration from environment variables
@@ -43,7 +42,7 @@ class SupabaseRESTClient:
             "Prefer": "return=representation"
         }
     
-    async def list_projects(self, limit: int = 100, offset: int = 0, include_inactive: bool = False) -> List[Dict[str, Any]]:
+    def list_projects(self, limit: int = 100, offset: int = 0, include_inactive: bool = False) -> List[Dict[str, Any]]:
         """List all projects with pagination support."""
         # Build query filters
         active_filter = "" if include_inactive else "&active=eq.true"
@@ -55,7 +54,7 @@ class SupabaseRESTClient:
         response.raise_for_status()
         return response.json()
     
-    async def get_project(self, project_id: str) -> Optional[Dict[str, Any]]:
+    def get_project(self, project_id: str) -> Optional[Dict[str, Any]]:
         """Get a project by ID."""
         response = requests.get(
             f"{self.url}/rest/v1/projects?id=eq.{project_id}&select=*",
@@ -65,9 +64,10 @@ class SupabaseRESTClient:
         projects = response.json()
         return projects[0] if projects else None
     
-    async def create_project(self, name: str, description: str) -> Dict[str, Any]:
+    def create_project(self, name: str, description: str) -> Dict[str, Any]:
         """Create a new project."""
         project_data = {
+            "id": str(uuid.uuid4()),
             "name": name,
             "description": description,
             "active": True
@@ -97,7 +97,7 @@ class SupabaseRESTClient:
                 return projects[0]
             raise ValueError("Could not retrieve created project")
     
-    async def update_project(self, project_id: str, name: str = None, description: str = None) -> Dict[str, Any]:
+    def update_project(self, project_id: str, name: str = None, description: str = None) -> Dict[str, Any]:
         """Update a project's attributes and return the updated project."""
         update_data = {}
         if name is not None:
@@ -107,7 +107,7 @@ class SupabaseRESTClient:
         
         if not update_data:
             # Nothing to update, return current project
-            return await self.get_project(project_id)
+            return self.get_project(project_id)
             
         # For PATCH operations, we need to add updated_at
         update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -136,9 +136,9 @@ class SupabaseRESTClient:
             raise ValueError(f"Failed to update project: {response.text}")
             
         # Get the updated project
-        return await self.get_project(project_id)
+        return self.get_project(project_id)
     
-    async def delete_project(self, project_id: str) -> bool:
+    def delete_project(self, project_id: str) -> bool:
         """Soft delete a project by ID."""
         # We use soft delete by setting active=false
         update_data = {
@@ -159,7 +159,7 @@ class SupabaseRESTClient:
         # Check for success (either 200 or 204)
         return response.status_code in [200, 204]
     
-    async def list_versions(self, project_id: str, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+    def list_versions(self, project_id: str, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
         """List all versions for a project."""
         response = requests.get(
             f"{self.url}/rest/v1/versions?project_id=eq.{project_id}&select=*&order=version_number.desc&limit={limit}&offset={offset}",
@@ -168,7 +168,7 @@ class SupabaseRESTClient:
         response.raise_for_status()
         return response.json()
     
-    async def get_version(self, version_id: str) -> Optional[Dict[str, Any]]:
+    def get_version(self, version_id: str) -> Optional[Dict[str, Any]]:
         """Get a version by ID."""
         response = requests.get(
             f"{self.url}/rest/v1/versions?id=eq.{version_id}&select=*",
@@ -178,9 +178,10 @@ class SupabaseRESTClient:
         versions = response.json()
         return versions[0] if versions else None
     
-    async def create_version(self, project_id: str, version_number: int, name: str, parent_id: str = None) -> Dict[str, Any]:
+    def create_version(self, project_id: str, version_number: int, name: str, parent_id: str = None) -> Dict[str, Any]:
         """Create a new version for a project."""
         version_data = {
+            "id": str(uuid.uuid4()),
             "project_id": project_id,
             "version_number": version_number,
             "name": name
@@ -213,72 +214,15 @@ class SupabaseRESTClient:
                 return versions[0]
             raise ValueError("Could not retrieve created version")
     
-    async def get_file(self, version_id: str, path: str) -> Optional[Dict[str, Any]]:
-        """Get a file by version ID and path."""
-        # URL encode the path to handle special characters
-        encoded_path = requests.utils.quote(path)
-        response = requests.get(
-            f"{self.url}/rest/v1/files?version_id=eq.{version_id}&path=eq.{encoded_path}&select=*",
-            headers=self.headers
-        )
-        response.raise_for_status()
-        files = response.json()
-        return files[0] if files else None
-    
-    async def create_or_update_file(self, version_id: str, path: str, content: str) -> Dict[str, Any]:
-        """Create or update a file within a version."""
-        # First check if file exists
-        existing_file = await self.get_file(version_id, path)
-        
-        if existing_file:
-            # Update existing file
-            response = requests.patch(
-                f"{self.url}/rest/v1/files?id=eq.{existing_file['id']}",
-                headers=self.headers,
-                json={"content": content, "updated_at": datetime.now(timezone.utc).isoformat()}
-            )
-            response.raise_for_status()
-            return existing_file
-        else:
-            # Create new file
-            file_data = {
-                "version_id": version_id,
-                "path": path,
-                "content": content
-            }
-            response = requests.post(
-                f"{self.url}/rest/v1/files",
-                headers=self.headers,
-                json=file_data
-            )
-            response.raise_for_status()
-            created_file = response.json()
-            
-            # Handle both array and object responses
-            if isinstance(created_file, list) and len(created_file) > 0:
-                return created_file[0]
-            elif isinstance(created_file, dict):
-                return created_file
-            else:
-                # Query for the file we just created
-                get_response = requests.get(
-                    f"{self.url}/rest/v1/files?version_id=eq.{version_id}&path=eq.{requests.utils.quote(path)}&select=*",
-                    headers=self.headers
-                )
-                get_response.raise_for_status()
-                files = get_response.json()
-                if files and len(files) > 0:
-                    return files[0]
-                raise ValueError("Could not retrieve created file")
 
 # Initialize the database client
 client = SupabaseRESTClient()
 
 # MCP API functions
-async def list_projects(limit: int = 100, offset: int = 0, include_inactive: bool = False):
+def list_projects(limit: int = 100, offset: int = 0, include_inactive: bool = False):
     """List all projects with pagination support."""
     try:
-        projects = await client.list_projects(limit=limit, offset=offset, include_inactive=include_inactive)
+        projects = client.list_projects(limit=limit, offset=offset, include_inactive=include_inactive)
         total_count = len(projects)  # This is simplified; in a real implementation, you would do a count query
         
         return create_response(
@@ -293,10 +237,10 @@ async def list_projects(limit: int = 100, offset: int = 0, include_inactive: boo
     except Exception as e:
         return create_response(success=False, error=str(e))
 
-async def get_project(project_id: str):
+def get_project(project_id: str):
     """Get a project by ID."""
     try:
-        project = await client.get_project(project_id=project_id)
+        project = client.get_project(project_id=project_id)
         if not project:
             return create_response(success=False, error=f"Project with ID {project_id} not found")
         
@@ -304,24 +248,24 @@ async def get_project(project_id: str):
     except Exception as e:
         return create_response(success=False, error=str(e))
 
-async def create_project(name: str, description: str = ""):
+def create_project(name: str, description: str = ""):
     """Create a new project."""
     try:
-        project = await client.create_project(name=name, description=description)
+        project = client.create_project(name=name, description=description)
         return create_response(success=True, data=project)
     except Exception as e:
         return create_response(success=False, error=str(e))
 
-async def update_project(project_id: str, name: str = None, description: str = None):
+def update_project(project_id: str, name: str = None, description: str = None):
     """Update a project's attributes."""
     try:
         # Check if project exists
-        project = await client.get_project(project_id=project_id)
+        project = client.get_project(project_id=project_id)
         if not project:
             return create_response(success=False, error=f"Project with ID {project_id} not found")
         
         # Update the project - returns updated project
-        updated_project = await client.update_project(
+        updated_project = client.update_project(
             project_id=project_id,
             name=name,
             description=description
@@ -331,16 +275,16 @@ async def update_project(project_id: str, name: str = None, description: str = N
     except Exception as e:
         return create_response(success=False, error=str(e))
 
-async def delete_project(project_id: str):
+def delete_project(project_id: str):
     """Soft delete a project by ID."""
     try:
         # Check if project exists
-        project = await client.get_project(project_id=project_id)
+        project = client.get_project(project_id=project_id)
         if not project:
             return create_response(success=False, error=f"Project with ID {project_id} not found")
         
         # Soft delete the project
-        success = await client.delete_project(project_id=project_id)
+        success = client.delete_project(project_id=project_id)
         if success:
             return create_response(success=True)
         else:
@@ -348,15 +292,15 @@ async def delete_project(project_id: str):
     except Exception as e:
         return create_response(success=False, error=str(e))
 
-async def list_versions(project_id: str, limit: int = 100, offset: int = 0):
+def list_versions(project_id: str, limit: int = 100, offset: int = 0):
     """List all versions for a project."""
     try:
         # Check if project exists
-        project = await client.get_project(project_id=project_id)
+        project = client.get_project(project_id=project_id)
         if not project:
             return create_response(success=False, error=f"Project with ID {project_id} not found")
         
-        versions = await client.list_versions(project_id=project_id, limit=limit, offset=offset)
+        versions = client.list_versions(project_id=project_id, limit=limit, offset=offset)
         total_count = len(versions)  # Simplified count
         
         return create_response(
@@ -371,10 +315,10 @@ async def list_versions(project_id: str, limit: int = 100, offset: int = 0):
     except Exception as e:
         return create_response(success=False, error=str(e))
 
-async def get_version(version_id: str):
+def get_version(version_id: str):
     """Get a version by ID."""
     try:
-        version = await client.get_version(version_id=version_id)
+        version = client.get_version(version_id=version_id)
         if not version:
             return create_response(success=False, error=f"Version with ID {version_id} not found")
         
@@ -382,28 +326,28 @@ async def get_version(version_id: str):
     except Exception as e:
         return create_response(success=False, error=str(e))
 
-async def create_version(project_id: str, name: str, parent_id: str = None):
+def create_version(project_id: str, name: str, parent_id: str = None):
     """Create a new version for a project."""
     try:
         # Check if project exists
-        project = await client.get_project(project_id=project_id)
+        project = client.get_project(project_id=project_id)
         if not project:
             return create_response(success=False, error=f"Project with ID {project_id} not found")
         
         # Check if parent version exists if provided
         if parent_id:
-            parent_version = await client.get_version(version_id=parent_id)
+            parent_version = client.get_version(version_id=parent_id)
             if not parent_version:
                 return create_response(success=False, error=f"Parent version with ID {parent_id} not found")
         
         # Get the next version number
-        versions = await client.list_versions(project_id=project_id, limit=1)
+        versions = client.list_versions(project_id=project_id, limit=1)
         next_version_number = 1
         if versions:
             next_version_number = max([v["version_number"] for v in versions]) + 1
         
         # Create the version
-        version = await client.create_version(
+        version = client.create_version(
             project_id=project_id,
             version_number=next_version_number,
             name=name,
@@ -414,41 +358,13 @@ async def create_version(project_id: str, name: str, parent_id: str = None):
     except Exception as e:
         return create_response(success=False, error=str(e))
 
-async def get_file(version_id: str, path: str):
-    """Get a file by version ID and path."""
-    try:
-        # Check if version exists
-        version = await client.get_version(version_id=version_id)
-        if not version:
-            return create_response(success=False, error=f"Version with ID {version_id} not found")
-        
-        file = await client.get_file(version_id=version_id, path=path)
-        if not file:
-            return create_response(success=False, error=f"File at path '{path}' not found in version {version_id}")
-        
-        return create_response(success=True, data=file)
-    except Exception as e:
-        return create_response(success=False, error=str(e))
-
-async def create_or_update_file(version_id: str, path: str, content: str):
-    """Create or update a file within a version."""
-    try:
-        # Check if version exists
-        version = await client.get_version(version_id=version_id)
-        if not version:
-            return create_response(success=False, error=f"Version with ID {version_id} not found")
-        
-        file = await client.create_or_update_file(version_id=version_id, path=path, content=content)
-        return create_response(success=True, data=file)
-    except Exception as e:
-        return create_response(success=False, error=str(e))
 
 # Standard MCP server functions for testing
-async def check_health():
+def check_health():
     """Check the health of the MCP server and its backend services."""
     try:
         # Check database connectivity
-        projects = await client.list_projects(limit=1)
+        projects = client.list_projects(limit=1)
         
         return create_response(
             success=True,
@@ -478,9 +394,8 @@ FUNCTIONS = {
     "list_versions": list_versions,
     "get_version": get_version,
     "create_version": create_version,
-    "get_file": get_file,
-    "create_or_update_file": create_or_update_file,
     "check_health": check_health
+    # File operations are handled internally only
 }
 
 # Define the MCP server object
@@ -525,15 +440,6 @@ server = {
             "name": {"type": "string", "description": "Name of the version", "required": True},
             "parent_id": {"type": "string", "description": "UUID of the parent version (if this is a child version)"}
         },
-        "get_file": {
-            "version_id": {"type": "string", "description": "UUID of the version", "required": True},
-            "path": {"type": "string", "description": "File path within the version", "required": True}
-        },
-        "create_or_update_file": {
-            "version_id": {"type": "string", "description": "UUID of the version", "required": True},
-            "path": {"type": "string", "description": "File path within the version", "required": True},
-            "content": {"type": "string", "description": "Content of the file", "required": True}
-        },
         "check_health": {}
     }
 }
@@ -547,13 +453,13 @@ def run():
 
 # This allows for testing outside of the MCP server
 if __name__ == "__main__":
-    async def test_mcp():
+    def test_mcp():
         """Run some basic tests on the MCP functions."""
         # Test project creation and retrieval
         project_name = f"Test Project {uuid.uuid4()}"
         print(f"Creating project: {project_name}")
         
-        create_result = await create_project(name=project_name, description="Test project from MCP REST API")
+        create_result = create_project(name=project_name, description="Test project from MCP REST API")
         if not create_result["success"]:
             print(f"Error creating project: {create_result['error']}")
             return False
@@ -562,7 +468,7 @@ if __name__ == "__main__":
         print(f"Project created with ID: {project_id}")
         
         # Test version creation
-        version_result = await create_version(project_id=project_id, name="Initial version")
+        version_result = create_version(project_id=project_id, name="Initial version")
         if not version_result["success"]:
             print(f"Error creating version: {version_result['error']}")
             return False
@@ -570,37 +476,11 @@ if __name__ == "__main__":
         version_id = version_result["data"]["id"]
         print(f"Version created with ID: {version_id}")
         
-        # Test file creation
-        file_path = "src/main.js"
-        file_content = "console.log('Hello from MCP!');"
-        file_result = await create_or_update_file(
-            version_id=version_id,
-            path=file_path,
-            content=file_content
-        )
-        if not file_result["success"]:
-            print(f"Error creating file: {file_result['error']}")
-            return False
-        
-        print(f"File created at path: {file_path}")
-        
-        # Test file retrieval
-        get_file_result = await get_file(version_id=version_id, path=file_path)
-        if not get_file_result["success"]:
-            print(f"Error retrieving file: {get_file_result['error']}")
-            return False
-        
-        retrieved_content = get_file_result["data"]["content"]
-        print(f"Retrieved file content: {retrieved_content}")
-        
-        # Verify content
-        if retrieved_content != file_content:
-            print(f"Error: Retrieved content doesn't match original content!")
-            return False
+        print(f"Version created successfully: {version_id}")
         
         print("All tests passed!")
         return True
     
     # Run the test
-    success = asyncio.run(test_mcp())
+    success = test_mcp()
     exit(0 if success else 1)

@@ -1,16 +1,18 @@
-"""Tests for Base model."""
+"""Tests for BaseSchema model."""
 import pytest
 from unittest.mock import MagicMock, AsyncMock
 from datetime import datetime, timezone
+from typing import Optional
 from uuid import UUID, uuid4
-from ...models.base import Base
+from pydantic import Field
 
-class TestModel(Base):
-    """Test model class inheriting from Base."""
-    __tablename__ = "test_models"
+from ...models.base import BaseSchema
 
-    def __init__(self):
-        super().__init__()
+class TestModel(BaseSchema):
+    """Test model class inheriting from BaseSchema."""
+    id: UUID = Field(default_factory=uuid4)
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 @pytest.mark.asyncio
 async def test_base_model_creation(mock_db_session, mock_models):

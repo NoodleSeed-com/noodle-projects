@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 from ...models.project import Project
 from ...models.version import Version
 from ...models.file import File, FileChange, FileOperation
-from ...models.base import Base
+from ...models.base import BaseSchema
 
 @pytest.fixture
 def event_loop():
@@ -88,7 +88,7 @@ async def mock_db_session():
                     await result
             
             # Set timestamps only if not already set
-            if isinstance(obj, Base):
+            if isinstance(obj, BaseSchema):
                 now = datetime.now(timezone.utc)
                 if not hasattr(obj, 'created_at') or obj.created_at is None:
                     obj.created_at = now

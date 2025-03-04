@@ -3,8 +3,8 @@ import pytest
 import asyncio
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.crud import projects, versions
-from app.schemas.project import ProjectCreate
-from app.schemas.common import FileChange, FileOperation
+from app.models.project import ProjectCreate
+from app.models.file import FileChange, FileOperation
 from sqlalchemy.exc import OperationalError
 from app.config import settings
 

@@ -4,6 +4,7 @@ Base models module providing common functionality for all models.
 from datetime import datetime
 from enum import Enum
 from typing import Optional, Dict, List, Any, TypeVar, Generic, Type, Union, Callable
+from pydantic import ValidationInfo
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, ConfigDict, field_serializer, model_validator, ValidationError
@@ -28,10 +29,27 @@ class BaseSchema(BaseModel):
         }
     )
     
-    @field_serializer('created_at', 'updated_at', when_used='json')
-    def serialize_datetime(self, dt: datetime) -> str:
-        """Serialize datetime fields to ISO format string."""
-        return dt.isoformat() if dt else None
+    def __hash__(self):
+        """Make the model hashable so it can be used in sets."""
+        # Use id if available, otherwise use object ID
+        try:
+            return hash(getattr(self, 'id', id(self)))
+        except:
+            return id(self)
+    
+    # Use model_serializer instead of field_serializer to avoid the "fields don't exist" error
+    # This will affect all datetime fields automatically
+    @model_validator(mode='before')
+    @classmethod
+    def serialize_datetime_fields(cls, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Serialize all datetime fields to ISO format strings."""
+        if not isinstance(data, dict):
+            return data
+            
+        for field, value in data.items():
+            if isinstance(value, datetime):
+                data[field] = value.isoformat()
+        return data
 
     @classmethod
     def from_dict(cls: Type[T], data: Dict[str, Any]) -> T:

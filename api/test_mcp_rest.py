@@ -3,7 +3,6 @@
 Test for the Model Context Protocol (MCP) server implementation using Supabase REST API.
 """
 import os
-import asyncio
 import uuid
 import json
 from pprint import pprint
@@ -19,9 +18,8 @@ try:
         list_versions,
         get_version,
         create_version,
-        get_file,
-        create_or_update_file,
         check_health
+        # File operations are handled internally only
     )
     MCP_IMPORTED = True
 except ImportError as e:
@@ -34,7 +32,7 @@ print(f"SUPABASE_URL: {os.environ.get('SUPABASE_URL', 'Not set')}")
 print(f"SUPABASE_KEY: {'*****' if os.environ.get('SUPABASE_KEY') else 'Not set'}")
 print(f"OPENROUTER_API_KEY: {'*****' if os.environ.get('OPENROUTER_API_KEY') else 'Not set'}")
 
-async def run_mcp_tests():
+def run_mcp_tests():
     """Run a series of tests against the MCP server functions."""
     if not MCP_IMPORTED:
         print("❌ Cannot run tests - MCP server module not imported")
@@ -44,7 +42,7 @@ async def run_mcp_tests():
     
     # Step 1: Check health
     print("\n1. Checking MCP server health...")
-    health_result = await check_health()
+    health_result = check_health()
     if not health_result.get("success", False):
         print(f"❌ Health check failed: {health_result.get('error', 'Unknown error')}")
         return False
@@ -52,7 +50,7 @@ async def run_mcp_tests():
     
     # Step 2: List existing projects
     print("\n2. Listing existing projects...")
-    list_result = await list_projects(limit=5)
+    list_result = list_projects(limit=5)
     if not list_result.get("success", False):
         print(f"❌ Failed to list projects: {list_result.get('error', 'Unknown error')}")
         return False
@@ -66,7 +64,7 @@ async def run_mcp_tests():
     test_project_name = f"MCP REST Test Project {uuid.uuid4()}"
     print(f"\n3. Creating test project: {test_project_name}")
     
-    create_result = await create_project(
+    create_result = create_project(
         name=test_project_name,
         description="Test project created via MCP REST API"
     )
@@ -80,7 +78,7 @@ async def run_mcp_tests():
     
     # Step 4: Get the project
     print(f"\n4. Getting project by ID: {project_id}")
-    get_result = await get_project(project_id=project_id)
+    get_result = get_project(project_id=project_id)
     
     if not get_result.get("success", False):
         print(f"❌ Failed to get project: {get_result.get('error', 'Unknown error')}")
@@ -92,7 +90,7 @@ async def run_mcp_tests():
     # Step 5: Update the project
     updated_name = f"{test_project_name} - Updated"
     print(f"\n5. Updating project to: {updated_name}")
-    update_result = await update_project(
+    update_result = update_project(
         project_id=project_id,
         name=updated_name,
         description="Updated description for testing"
@@ -107,7 +105,7 @@ async def run_mcp_tests():
     
     # Step 6: Create a version
     print("\n6. Creating a new version")
-    version_result = await create_version(
+    version_result = create_version(
         project_id=project_id,
         name="Initial version"
     )
@@ -122,7 +120,7 @@ async def run_mcp_tests():
     
     # Step 7: List versions
     print("\n7. Listing versions for the project")
-    versions_result = await list_versions(project_id=project_id)
+    versions_result = list_versions(project_id=project_id)
     
     if not versions_result.get("success", False):
         print(f"❌ Failed to list versions: {versions_result.get('error', 'Unknown error')}")
@@ -131,61 +129,9 @@ async def run_mcp_tests():
     versions = versions_result.get("data", {}).get("items", [])
     print(f"✅ Found {len(versions)} versions")
     
-    # Step 8: Create a file
-    file_path = "src/app.js"
-    file_content = """
-    // Sample JavaScript file
-    function greet(name) {
-        return `Hello, ${name}!`;
-    }
-    
-    console.log(greet('MCP'));
-    """
-    
-    print(f"\n8. Creating a file at: {file_path}")
-    file_result = await create_or_update_file(
-        version_id=version_id,
-        path=file_path,
-        content=file_content
-    )
-    
-    if not file_result.get("success", False):
-        print(f"❌ Failed to create file: {file_result.get('error', 'Unknown error')}")
-        return False
-    
-    file_id = file_result.get("data", {}).get("id")
-    print(f"✅ File created with ID: {file_id}")
-    
-    # Step 9: Get the file
-    print(f"\n9. Getting file content from: {file_path}")
-    get_file_result = await get_file(version_id=version_id, path=file_path)
-    
-    if not get_file_result.get("success", False):
-        print(f"❌ Failed to get file: {get_file_result.get('error', 'Unknown error')}")
-        return False
-    
-    retrieved_content = get_file_result.get("data", {}).get("content")
-    content_matches = retrieved_content == file_content
-    print(f"✅ File retrieved successfully. Content matches: {content_matches}")
-    
-    # Step 10: Update the file
-    updated_content = file_content + "\n// Updated file"
-    print(f"\n10. Updating file at: {file_path}")
-    update_file_result = await create_or_update_file(
-        version_id=version_id,
-        path=file_path,
-        content=updated_content
-    )
-    
-    if not update_file_result.get("success", False):
-        print(f"❌ Failed to update file: {update_file_result.get('error', 'Unknown error')}")
-        return False
-    
-    print(f"✅ File updated successfully")
-    
-    # Step 11: Delete the project (soft delete)
-    print(f"\n11. Cleaning up: Deleting test project {project_id}")
-    delete_result = await delete_project(project_id=project_id)
+    # Step 8: Delete the project (soft delete)
+    print(f"\n8. Cleaning up: Deleting test project {project_id}")
+    delete_result = delete_project(project_id=project_id)
     
     if not delete_result.get("success", False):
         print(f"❌ Failed to delete project: {delete_result.get('error', 'Unknown error')}")
@@ -194,7 +140,7 @@ async def run_mcp_tests():
     print("✅ Project successfully deleted (soft delete)")
     
     # Final Check: Verify soft deletion worked
-    verify_result = await get_project(project_id=project_id)
+    verify_result = get_project(project_id=project_id)
     project_exists = verify_result.get("success", False)
     project_active = verify_result.get("data", {}).get("active", True) if project_exists else False
     
@@ -205,11 +151,11 @@ async def run_mcp_tests():
     print("\n✅ All MCP REST API tests completed successfully!")
     return True
 
-async def main():
+def main():
     """Run all tests and return success/failure."""
-    success = await run_mcp_tests()
+    success = run_mcp_tests()
     return success
 
 if __name__ == "__main__":
-    success = asyncio.run(main())
+    success = main()
     exit(0 if success else 1)

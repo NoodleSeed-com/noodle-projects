@@ -10,11 +10,9 @@ from uuid import UUID
 # Import existing business logic
 from app.crud.project import ProjectCRUD
 from app.crud.version.crud import VersionCRUD
-from app.models.project import Project
-from app.models.version import Version
-from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse
-from app.schemas.version import VersionCreate, VersionResponse, CreateVersionRequest
-from app.schemas.common import FileOperation, FileChange
+from app.models.project import Project, ProjectCreate, ProjectUpdate, ProjectResponse
+from app.models.version import Version, VersionCreate, VersionResponse, CreateVersionRequest
+from app.models.file import FileOperation, FileChange
 from app.config import settings
 from app.services.openrouter import OpenRouterService, get_openrouter
 from app.errors import NoodleError, ErrorType

@@ -24,7 +24,7 @@ app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), na
 
 # Exception handlers
 @app.exception_handler(NoodleError)
-async def noodle_error_handler(request: Request, exc: NoodleError):
+def noodle_error_handler(request: Request, exc: NoodleError):
     """Handle NoodleError exceptions."""
     status_code = status.HTTP_400_BAD_REQUEST
     
@@ -46,7 +46,7 @@ async def noodle_error_handler(request: Request, exc: NoodleError):
     )
 
 @app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
+def http_exception_handler(request: Request, exc: HTTPException):
     """Handle FastAPI HTTPException."""
     return JSONResponse(
         status_code=exc.status_code,
@@ -54,7 +54,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
     )
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
+def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Handle FastAPI validation errors."""
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -77,11 +77,11 @@ app.include_router(
 )
 
 @app.get("/health")
-async def health_check():
+def health_check():
     """Health check endpoint."""
     return {"status": "healthy"}
 
 @app.get("/api-tester", response_class=FileResponse)
-async def get_api_tester():
+def get_api_tester():
     """Serve the API tester HTML page."""
     return Path(__file__).parent / "static" / "api-tester.html"

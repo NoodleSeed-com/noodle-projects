@@ -3,7 +3,6 @@
 Test the MCP server using Supabase REST API to bypass direct DB connection issues.
 """
 import os
-import asyncio
 import uuid
 import requests
 import json
@@ -28,7 +27,7 @@ class SupabaseRESTClient:
             "Prefer": "return=representation" 
         }
     
-    async def list_projects(self) -> List[Dict[str, Any]]:
+    def list_projects(self) -> List[Dict[str, Any]]:
         """List all projects from Supabase."""
         response = requests.get(
             f"{self.url}/rest/v1/projects?select=*",
@@ -37,7 +36,7 @@ class SupabaseRESTClient:
         response.raise_for_status()
         return response.json()
     
-    async def get_project(self, project_id: str) -> Dict[str, Any]:
+    def get_project(self, project_id: str) -> Dict[str, Any]:
         """Get a project by ID."""
         response = requests.get(
             f"{self.url}/rest/v1/projects?id=eq.{project_id}&select=*",
@@ -49,9 +48,10 @@ class SupabaseRESTClient:
             raise ValueError(f"Project with ID {project_id} not found")
         return projects[0]
     
-    async def create_project(self, name: str, description: str) -> str:
+    def create_project(self, name: str, description: str) -> str:
         """Create a new project."""
         project_data = {
+            "id": str(uuid.uuid4()),
             "name": name,
             "description": description,
             "active": True
@@ -80,7 +80,7 @@ class SupabaseRESTClient:
                 return projects[0]["id"]
             raise ValueError("Could not retrieve created project ID")
     
-    async def delete_project(self, project_id: str) -> bool:
+    def delete_project(self, project_id: str) -> bool:
         """Soft delete a project by ID."""
         # In this case, we're setting active=false instead of doing a real delete
         response = requests.patch(
@@ -88,9 +88,9 @@ class SupabaseRESTClient:
             headers=self.headers,
             json={"active": False}
         )
-        return response.status_code == 204
+        return response.status_code in [200, 204]
     
-    async def list_versions(self, project_id: str) -> List[Dict[str, Any]]:
+    def list_versions(self, project_id: str) -> List[Dict[str, Any]]:
         """List all versions for a project."""
         response = requests.get(
             f"{self.url}/rest/v1/versions?project_id=eq.{project_id}&select=*",
@@ -99,9 +99,10 @@ class SupabaseRESTClient:
         response.raise_for_status()
         return response.json()
     
-    async def create_version(self, project_id: str, version_number: int, name: str, parent_id: str = None) -> str:
+    def create_version(self, project_id: str, version_number: int, name: str, parent_id: str = None) -> str:
         """Create a new version for a project."""
         version_data = {
+            "id": str(uuid.uuid4()),
             "project_id": project_id,
             "version_number": version_number,
             "name": name
@@ -134,7 +135,7 @@ class SupabaseRESTClient:
                 return versions[0]["id"]
             raise ValueError("Could not retrieve created version ID")
 
-async def test_rest_db():
+def test_rest_db():
     """Test database functionality using Supabase REST API."""
     try:
         print("\n🧪 Starting Supabase REST API Test")
@@ -145,7 +146,7 @@ async def test_rest_db():
         print(f"\n1. Creating test project: {test_project_name}")
         
         # Create project
-        project_id = await client.create_project(
+        project_id = client.create_project(
             name=test_project_name,
             description="Test project created via Supabase REST API"
         )
@@ -153,18 +154,18 @@ async def test_rest_db():
         
         # List projects
         print("\n2. Listing all projects")
-        projects = await client.list_projects()
+        projects = client.list_projects()
         print(f"✅ Found {len(projects)} projects")
         
         # Get project
         print(f"\n3. Getting project by ID: {project_id}")
-        project = await client.get_project(project_id=project_id)
+        project = client.get_project(project_id=project_id)
         print(f"✅ Retrieved project: {project['name']}")
         
         # Create version
         print("\n4. Creating a new version")
         version_number = 1
-        version_id = await client.create_version(
+        version_id = client.create_version(
             project_id=project_id,
             version_number=version_number,
             name="Initial version"
@@ -173,7 +174,7 @@ async def test_rest_db():
         
         # List versions
         print("\n5. Listing project versions")
-        versions = await client.list_versions(project_id=project_id)
+        versions = client.list_versions(project_id=project_id)
         print(f"✅ Found {len(versions)} versions")
         
         # Verify correct version was created
@@ -189,7 +190,7 @@ async def test_rest_db():
         
         # Delete project (soft delete)
         print(f"\n6. Cleaning up: Deleting test project {project_id}")
-        deleted = await client.delete_project(project_id=project_id)
+        deleted = client.delete_project(project_id=project_id)
         if deleted:
             print("✅ Project marked as inactive (soft deleted)")
         else:
@@ -204,7 +205,7 @@ async def test_rest_db():
         traceback.print_exc()
         return False
 
-async def test_mcp_rest_integration():
+def test_mcp_rest_integration():
     """Test the MCP server integration with Supabase REST API."""
     try:
         print("\n🧪 Starting MCP Rest Integration Test")
@@ -217,7 +218,7 @@ async def test_mcp_rest_integration():
         
         print("\n1. Importing MCP server module")
         try:
-            from app.mcp_server import list_projects, create_project, get_project, delete_project
+            from app.mcp_server_rest import list_projects, create_project, get_project, delete_project
             print("✅ Successfully imported MCP server module")
         except ImportError as e:
             print(f"❌ Could not import MCP server module: {e}")
@@ -227,11 +228,49 @@ async def test_mcp_rest_integration():
         test_project_name = f"MCP-REST Test Project {uuid.uuid4()}"
         print(f"\n2. Creating test project via MCP: {test_project_name}")
         
-        # This would call the MCP server function that uses REST API internally
-        # For now, this is a placeholder - we'll implement this when we add REST API support to MCP
-        print("✅ MCP REST integration test completed")
-        print("Note: Actual MCP functions not called. This is just a proof of concept.")
+        # Create a project using the MCP function
+        result = create_project(name=test_project_name, description="Project created by MCP REST test")
         
+        if not result.get('success'):
+            print(f"❌ Failed to create project: {result.get('error')}")
+            return False
+            
+        project_id = result.get('data', {}).get('id')
+        print(f"✅ Project created with ID: {project_id}")
+        
+        # List projects
+        print("\n3. Listing all projects with MCP REST")
+        result = list_projects()
+        
+        if not result.get('success'):
+            print(f"❌ Failed to list projects: {result.get('error')}")
+            return False
+            
+        projects = result.get('data', {}).get('items', [])
+        print(f"✅ Found {len(projects)} projects")
+        
+        # Get project details
+        print(f"\n4. Getting project with MCP REST by ID: {project_id}")
+        result = get_project(project_id=project_id)
+        
+        if not result.get('success'):
+            print(f"❌ Failed to get project: {result.get('error')}")
+            return False
+            
+        project_data = result.get('data', {})
+        print(f"✅ Retrieved project: {project_data.get('name')}")
+        
+        # Delete project
+        print(f"\n5. Cleaning up: Deleting test project with MCP REST {project_id}")
+        result = delete_project(project_id=project_id)
+        
+        if not result.get('success'):
+            print(f"❌ Failed to delete project: {result.get('error')}")
+            return False
+            
+        print("✅ Project successfully deleted")
+        
+        print("\n✅ All MCP REST tests completed successfully!")
         return True
     
     except Exception as e:
@@ -240,28 +279,28 @@ async def test_mcp_rest_integration():
         traceback.print_exc()
         return False
 
-async def main():
+def main():
     """Run all tests."""
     print("\n🔍 Testing Supabase connection and MCP integration using REST API...")
     
     # Test Supabase REST API
-    rest_success = await test_rest_db()
+    rest_success = test_rest_db()
     
     if not rest_success:
         print("\n❌ Supabase REST API tests failed. Skipping MCP integration test.")
         return False
         
     # Test MCP integration with REST API
-    # mcp_success = await test_mcp_rest_integration()
+    mcp_success = test_mcp_rest_integration()
     
     # Summary
     print("\n\n📊 Test Summary:")
     print(f"Supabase REST API: {'✅ Success' if rest_success else '❌ Failed'}")
-    # print(f"MCP REST Integration: {'✅ Success' if mcp_success else '❌ Failed'}")
-    print("\nRecommendation: Update app/mcp_server.py to use REST API for Supabase interaction")
+    print(f"MCP REST Integration: {'✅ Success' if mcp_success else '❌ Failed'}")
+    print("\nMCP server has been updated to use synchronous Supabase REST API")
     
-    return rest_success # and mcp_success
+    return rest_success and mcp_success
 
 if __name__ == "__main__":
-    success = asyncio.run(main())
+    success = main()
     exit(0 if success else 1)

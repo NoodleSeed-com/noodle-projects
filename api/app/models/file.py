@@ -4,7 +4,7 @@ File model definitions for database storage and API operations.
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import Field, field_validator
 
@@ -41,10 +41,10 @@ class FileBase(BaseSchema):
 
 class File(FileBase):
     """Complete file model with all attributes."""
-    id: UUID
+    id: UUID = Field(default_factory=uuid4, description="Unique identifier")
     version_id: UUID = Field(..., description="ID of the version this file belongs to")
-    created_at: datetime
-    updated_at: datetime
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
     
     model_config = {
         "json_schema_extra": {

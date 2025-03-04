@@ -3,7 +3,7 @@ Version model and schemas with integrated Pydantic validation.
 """
 from datetime import datetime
 from typing import List, Optional, Dict, Any, Union, Type, ClassVar
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import Field, field_validator, model_validator
 
@@ -33,10 +33,10 @@ class Version(VersionBase):
     Each version has a sequential version number and can reference a parent version
     from which it was created.
     """
-    id: UUID
+    id: UUID = Field(default_factory=uuid4, description="Unique identifier")
     project_id: UUID = Field(..., description="Project ID")
-    created_at: datetime
-    updated_at: datetime
+    created_at: datetime = Field(default_factory=datetime.utcnow, description="Creation timestamp")
+    updated_at: datetime = Field(default_factory=datetime.utcnow, description="Last update timestamp")
     
     # Optional fields populated from relationships
     files: Optional[List["File"]] = Field(None, description="List of files in this version")

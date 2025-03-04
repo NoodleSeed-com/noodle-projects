@@ -62,30 +62,33 @@ async def test_create_initial_version(mock_db_session):
             for content in mock_files.values()
         ]
         
-        # Trigger event
-        await create_initial_version(mock_db_session, project.id)
+        # Get the create_initial_version signature from module
+        with patch('app.crud.version.template.get_supabase_client') as mock_supabase_client:
+            # Mock Supabase client and responses
+            mock_client = MagicMock()
+            mock_supabase_client.return_value = mock_client
+            
+            # Mock version insert
+            mock_version_execute = MagicMock()
+            mock_version_execute.data = [{"id": str(uuid4()), "version_number": 0}]
+            mock_client.table.return_value.insert.return_value.execute.return_value = mock_version_execute
+            
+            # Trigger event
+            result = create_initial_version(project.id)
         
-        # Get created version
-        versions = [obj for obj in mock_db_session.new if isinstance(obj, Version)]
-        assert len(versions) == 1
-        version = versions[0]
+        # With Supabase version, we just verify the API calls
+        # Since now this is REST API-based, not SQLAlchemy-based
+
+        # Verify the version was created via Supabase
+        mock_client.table.assert_any_call("versions")
+        mock_client.table.return_value.insert.assert_any_call({
+            "project_id": str(project.id),
+            "version_number": 0,
+            "name": "Initial Version"
+        })
         
-        # Verify version creation
-        assert version.project_id == project.id
-        assert version.version_number == 0
-        assert version.name == "Initial Version"
-        
-        # Verify file creation
-        files = [obj for obj in mock_db_session.new if isinstance(obj, File)]
-        assert len(files) == len(mock_files)
-        
-        # Verify each file's content and path
-        file_paths = {file.path: file.content for file in files}
-        assert file_paths == mock_files
-        
-        # Verify session operations
-        assert mock_db_session.commit.await_count == 2  # One for version, one for files
-        assert mock_db_session.refresh.await_count == 1  # For version after first commit
+        # Verify files were created
+        mock_client.table.assert_any_call("files")
 
 @pytest.mark.asyncio
 async def test_create_initial_version_no_session(mock_db_session):
@@ -93,65 +96,101 @@ async def test_create_initial_version_no_session(mock_db_session):
     project = Project(id=uuid4(), name="Test Project")
     # Don't add to session
     
-    # Instead of mocking internal functions, just mock os.walk to return no files
-    with patch('os.walk') as mock_walk:
-        # Set up os.walk to return no files (empty template directory)
-        mock_walk.return_value = []
+    # Setup the Supabase client mock
+    with patch('app.crud.version.template.get_supabase_client') as mock_supabase_client:
+        # Mock Supabase client and responses
+        mock_client = MagicMock()
+        mock_supabase_client.return_value = mock_client
         
-        # Call event directly
-        await create_initial_version(mock_db_session, project.id)
+        # Mock version insert
+        mock_version_id = str(uuid4())
+        mock_version_execute = MagicMock()
+        mock_version_execute.data = [{
+            "id": mock_version_id, 
+            "version_number": 0,
+            "name": "Initial Version"
+        }]
+        mock_client.table.return_value.insert.return_value.execute.return_value = mock_version_execute
         
-        # Verify a version was created
-        versions = [obj for obj in mock_db_session.new if isinstance(obj, Version)]
-        assert len(versions) == 1
+        # Mock os.walk to return no files
+        with patch('os.walk') as mock_walk:
+            # Set up os.walk to return no files (empty template directory)
+            mock_walk.return_value = []
+            
+            # Call function with new signature (only takes project_id)
+            result = create_initial_version(project.id)
+            
+            # Verify the function called the Supabase client correctly
+            mock_client.table.assert_any_call("versions")
+            mock_client.table.return_value.insert.assert_any_call({
+                "project_id": str(project.id),
+                "version_number": 0,
+                "name": "Initial Version"
+            })
+            
+            # Verify result contains the version data
+            assert result["id"] == mock_version_id
+            assert result["version_number"] == 0
         
-        # Verify the version properties
-        version = versions[0]
-        assert version.project_id == project.id
-        assert version.version_number == 0
 
 @pytest.mark.asyncio
 async def test_create_initial_version_file_error(mock_db_session):
     """Test handling of file read errors."""
     # Create a project with mock session
     project = Project(id=uuid4(), name="Test Project")
-    project._sa_session = mock_db_session
-    mock_db_session.add(project)
     
-    # Patch builtins.open directly to simulate file error
-    # This will happen inside the read_file function
-    with patch('builtins.open', create=True) as mock_open:
-        # Set up open to raise an IOError when called
-        mock_open.side_effect = IOError("Failed to read file")
+    # Setup the Supabase client mock
+    with patch('app.crud.version.template.get_supabase_client') as mock_supabase_client:
+        # Mock Supabase client and responses
+        mock_client = MagicMock()
+        mock_supabase_client.return_value = mock_client
         
-        # We also need to patch os.walk to return some files
-        with patch('os.walk') as mock_walk:
-            mock_walk.return_value = [
-                ('/mock/path/templates/version-0', [], ['package.json'])
-            ]
+        # Mock version insert 
+        mock_version_id = str(uuid4())
+        mock_version_execute = MagicMock()
+        mock_version_execute.data = [{
+            "id": mock_version_id, 
+            "version_number": 0,
+            "name": "Initial Version"
+        }]
+        mock_client.table.return_value.insert.return_value.execute.return_value = mock_version_execute
+        
+        # Patch builtins.open directly to simulate file error
+        with patch('builtins.open', create=True) as mock_open:
+            # Set up open to raise an IOError when called
+            mock_open.side_effect = IOError("Failed to read file")
             
-            # Make sure path operations return something reasonable
-            with patch('os.path.dirname') as mock_dirname, \
-                 patch('os.path.join') as mock_join, \
-                 patch('os.path.relpath') as mock_relpath:
+            # We also need to patch os.walk to return some files
+            with patch('os.walk') as mock_walk:
+                mock_walk.return_value = [
+                    ('/mock/path/templates/version-0', [], ['package.json'])
+                ]
                 
-                mock_dirname.return_value = '/mock/path'
-                mock_join.side_effect = lambda *args: '/'.join(args)
-                mock_relpath.return_value = 'package.json'
-                
-                # We need a try/except block since the function will raise an error
-                try:
-                    await create_initial_version(mock_db_session, project.id)
-                    # If we reach here, the test fails - should have raised an exception
-                    assert False, "Expected IOError was not raised"
-                except IOError as e:
-                    # This is expected
-                    assert "Failed to read file" in str(e)
-                
-                # Verify that the version was created before the error
-                # In the real function, the version is committed before file processing
-                assert mock_db_session.commit.await_count >= 1
-                assert mock_db_session.refresh.await_count >= 1
+                # Make sure path operations return something reasonable
+                with patch('os.path.dirname') as mock_dirname, \
+                     patch('os.path.join') as mock_join, \
+                     patch('os.path.relpath') as mock_relpath:
+                    
+                    mock_dirname.return_value = '/mock/path'
+                    mock_join.side_effect = lambda *args: '/'.join(args)
+                    mock_relpath.return_value = 'package.json'
+                    
+                    # We need a try/except block since the function will raise an error
+                    try:
+                        result = create_initial_version(project.id)
+                        # If we reach here, the test fails - should have raised an exception
+                        assert False, "Expected IOError was not raised"
+                    except IOError as e:
+                        # This is expected
+                        assert "Failed to read file" in str(e)
+                    
+                        # Verify that the Supabase client was called to create a version
+                        mock_client.table.assert_any_call("versions")
+                        mock_client.table.return_value.insert.assert_any_call({
+                            "project_id": str(project.id),
+                            "version_number": 0,
+                            "name": "Initial Version"
+                        })
             
 @pytest.mark.asyncio
 async def test_version_validate_before_commit(mock_db_session):

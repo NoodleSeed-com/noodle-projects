@@ -2,7 +2,6 @@
 """
 Noodle Projects MCP server using the official MCP Python SDK.
 """
-import asyncio
 import sys
 import json
 from typing import Optional, Dict, Any, List
@@ -37,7 +36,7 @@ class SupabaseRESTClient:
             "Prefer": "return=representation"
         }
     
-    async def list_projects(self, limit: int = 100, offset: int = 0, include_inactive: bool = False) -> List[Dict[str, Any]]:
+    def list_projects(self, limit: int = 100, offset: int = 0, include_inactive: bool = False) -> List[Dict[str, Any]]:
         """List all projects with pagination support."""
         # Build query filters
         active_filter = "" if include_inactive else "&active=eq.true"
@@ -49,7 +48,7 @@ class SupabaseRESTClient:
         response.raise_for_status()
         return response.json()
     
-    async def get_project(self, project_id: str) -> Optional[Dict[str, Any]]:
+    def get_project(self, project_id: str) -> Optional[Dict[str, Any]]:
         """Get a project by ID."""
         response = requests.get(
             f"{self.url}/rest/v1/projects?id=eq.{project_id}&select=*",
@@ -59,7 +58,7 @@ class SupabaseRESTClient:
         projects = response.json()
         return projects[0] if projects else None
     
-    async def create_project(self, name: str, description: str) -> Dict[str, Any]:
+    def create_project(self, name: str, description: str) -> Dict[str, Any]:
         """Create a new project."""
         project_data = {
             "name": name,
@@ -97,10 +96,10 @@ client = SupabaseRESTClient()
 # Define the tools
 
 @app.tool(description="List all projects")
-async def list_projects(limit: int = 100, offset: int = 0, include_inactive: bool = False) -> Dict[str, Any]:
+def list_projects(limit: int = 100, offset: int = 0, include_inactive: bool = False) -> Dict[str, Any]:
     """List all projects with pagination support."""
     try:
-        projects = await client.list_projects(limit=limit, offset=offset, include_inactive=include_inactive)
+        projects = client.list_projects(limit=limit, offset=offset, include_inactive=include_inactive)
         return {
             "items": projects,
             "total": len(projects),
@@ -112,10 +111,10 @@ async def list_projects(limit: int = 100, offset: int = 0, include_inactive: boo
         raise
 
 @app.tool(description="Get project details by ID")
-async def get_project(project_id: str) -> Dict[str, Any]:
+def get_project(project_id: str) -> Dict[str, Any]:
     """Get a project by ID."""
     try:
-        project = await client.get_project(project_id=project_id)
+        project = client.get_project(project_id=project_id)
         if not project:
             raise ValueError(f"Project with ID {project_id} not found")
         return project
@@ -124,21 +123,21 @@ async def get_project(project_id: str) -> Dict[str, Any]:
         raise
 
 @app.tool(description="Create a new project")
-async def create_project(name: str, description: str = "") -> Dict[str, Any]:
+def create_project(name: str, description: str = "") -> Dict[str, Any]:
     """Create a new project."""
     try:
-        project = await client.create_project(name=name, description=description)
+        project = client.create_project(name=name, description=description)
         return project
     except Exception as e:
         print(f"Error creating project: {str(e)}", file=sys.stderr)
         raise
 
 @app.tool(description="Check server health")
-async def check_health() -> Dict[str, Any]:
+def check_health() -> Dict[str, Any]:
     """Check the health of the MCP server and its backend services."""
     try:
         # Check database connectivity
-        projects = await client.list_projects(limit=1)
+        projects = client.list_projects(limit=1)
         
         return {
             "status": "healthy",
