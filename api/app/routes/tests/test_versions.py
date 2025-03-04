@@ -4,9 +4,9 @@ from fastapi.testclient import TestClient
 from uuid import uuid4, UUID
 from unittest.mock import MagicMock, patch, AsyncMock
 from sqlalchemy.orm import Session
-from ...schemas.common import FileOperation, FileChange
-from ...schemas.project import ProjectCreate
-from ...schemas.version import CreateVersionRequest
+from ...models.file import FileOperation, FileChange
+from ...models.project import ProjectCreate
+from ...models.version import CreateVersionRequest
 
 def test_get_version_endpoint(client: TestClient):
     """Test the GET version endpoint."""

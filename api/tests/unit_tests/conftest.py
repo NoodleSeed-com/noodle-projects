@@ -47,10 +47,14 @@ def mock_version(mock_project):
         created_at=datetime.now(),
         updated_at=datetime.now()
     )
-    # Initialize files list
+    # First, create version without files to get a version_id
+    version_id = version.id
+    
+    # Initialize files list with the version_id
     version.files = [
         File(
             id=uuid4(),
+            version_id=version_id,  # Add version_id parameter here
             path="src/test.tsx",
             content="export const Test = () => <div>Test</div>",
             created_at=datetime.now(),

@@ -26,16 +26,20 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
 
 @pytest.fixture(scope="function")
 async def test_engine() -> AsyncGenerator[AsyncEngine, None]:
-    """Create a test database engine."""
-    # Ensure we're in test mode
-    os.environ["TEST_MODE"] = "True"
+    """Create a test database engine for integration tests."""
+    # Use the existing TEST_MODE setting rather than modifying os.environ directly
+    original_test_mode = settings.TEST_MODE
     
-    # Use SQLite for test database
-    test_db_url = "sqlite+aiosqlite:///:memory:"
+    # Override settings for testing
+    settings.TEST_MODE = True
+    
+    # Use PostgreSQL for test database (from environment variables)
+    test_db_url = os.environ.get("TEST_DATABASE_URL", settings.DATABASE_URL)
+    
     engine = create_async_engine(
-        test_db_url,
+        str(test_db_url),
         echo=False,
-        poolclass=NullPool
+        poolclass=NullPool  # Disable connection pooling for tests
     )
     
     # Create tables
@@ -49,6 +53,9 @@ async def test_engine() -> AsyncGenerator[AsyncEngine, None]:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
+    
+    # Restore original setting
+    settings.TEST_MODE = original_test_mode
 
 @pytest.fixture(scope="function")
 async def db_session(test_engine: AsyncEngine) -> AsyncGenerator[AsyncSession, None]:

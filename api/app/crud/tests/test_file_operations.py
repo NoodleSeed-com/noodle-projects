@@ -2,8 +2,7 @@
 import pytest
 from uuid import uuid4
 from unittest.mock import MagicMock
-from ...schemas.common import FileChange, FileOperation
-from ...models.file import File
+from ...models.file import FileChange, FileOperation, File
 from ..version.file_operations import validate_file_changes, apply_file_changes
 
 @pytest.mark.asyncio

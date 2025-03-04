@@ -3,7 +3,7 @@ import os
 import asyncio
 from dotenv import load_dotenv
 from app.services.openrouter import OpenRouterService
-from app.schemas.file import FileResponse
+from app.models.file import FileResponse
 from uuid import uuid4
 
 # Load environment variables from .env file

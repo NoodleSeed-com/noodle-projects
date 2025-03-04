@@ -9,9 +9,8 @@ from sqlalchemy.orm import Session
 from uuid import UUID, uuid4
 from ...models.project import Project
 from ...models.version import Version
-from ...models.file import File
+from ...models.file import File, FileChange, FileOperation
 from ...models.base import Base
-from ...schemas.common import FileChange, FileOperation
 
 @pytest.fixture
 def event_loop():

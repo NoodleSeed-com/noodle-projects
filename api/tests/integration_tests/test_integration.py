@@ -3,45 +3,46 @@ Integration tests for project deletion functionality.
 Tests follow FastAPI best practices and ensure proper soft deletion behavior.
 """
 import pytest
+import pytest_asyncio
 from uuid import UUID
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from pydantic import ValidationError, TypeAdapter
 from typing import List
 from app.crud import projects
-from app.schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse
-from app.schemas.version import VersionResponse, VersionListItem
-from app.schemas.common import FileOperation, FileChange
+from app.models.project import ProjectCreate, ProjectUpdate, ProjectResponse
+from app.models.version import VersionResponse, VersionListItem
+from app.models.file import FileOperation, FileChange
 
 # Type adapters for common validations
 project_list_adapter = TypeAdapter(List[ProjectResponse])
 version_list_adapter = TypeAdapter(List[VersionListItem])
 
-@pytest.fixture
-async def active_project(db_session, client) -> dict:
+@pytest_asyncio.fixture
+async def active_project(db_session, async_client) -> dict:
     """Fixture that creates and returns an active project."""
-    response = await client.post("/api/projects/", json={
+    response = await async_client.post("/api/projects/", json={
         "name": "Test Project",
         "description": "Test Description"
     })
     assert response.status_code == 201
     return response.json()
 
-@pytest.fixture
-async def inactive_project(db_session, client) -> dict:
+@pytest_asyncio.fixture
+async def inactive_project(db_session, async_client) -> dict:
     """Fixture that creates and returns an inactive project."""
-    project_response = await client.post("/api/projects/", json={
+    project_response = await async_client.post("/api/projects/", json={
         "name": "Inactive Project",
         "description": "Test Description"
     })
     project = project_response.json()
     
-    delete_response = await client.delete(f"/api/projects/{project['id']}")
+    delete_response = await async_client.delete(f"/api/projects/{project['id']}")
     assert delete_response.status_code == 200
     return delete_response.json()
 
-@pytest.mark.anyio
-async def test_soft_delete_via_api(active_project: dict, client):
+@pytest.mark.asyncio
+async def test_soft_delete_via_api(active_project: dict, async_client):
     """Test soft deletion through API endpoint.
     
     Verifies:
@@ -55,7 +56,7 @@ async def test_soft_delete_via_api(active_project: dict, client):
     assert active_project["active"] is True
 
     # Verify project is in active projects list
-    list_response = await client.get("/api/projects/")
+    list_response = await async_client.get("/api/projects/")
     assert list_response.status_code == 200
     projects_list = list_response.json()
     assert any(p["id"] == project_id for p in projects_list)
@@ -65,7 +66,7 @@ async def test_soft_delete_via_api(active_project: dict, client):
     assert len(project_list) > 0
 
     # Perform soft delete
-    delete_response = await client.delete(f"/api/projects/{project_id}")
+    delete_response = await async_client.delete(f"/api/projects/{project_id}")
     assert delete_response.status_code == 200
     deleted_project = delete_response.json()
     
@@ -75,12 +76,12 @@ async def test_soft_delete_via_api(active_project: dict, client):
     assert project_response.active is False
 
     # Verify project not in active projects list
-    list_after = await client.get("/api/projects/")
+    list_after = await async_client.get("/api/projects/")
     assert list_after.status_code == 200
     assert not any(p["id"] == project_id for p in list_after.json())
 
     # Verify project still accessible directly
-    get_response = await client.get(f"/api/projects/{project_id}")
+    get_response = await async_client.get(f"/api/projects/{project_id}")
     assert get_response.status_code == 200
     project = get_response.json()
     
@@ -91,8 +92,8 @@ async def test_soft_delete_via_api(active_project: dict, client):
     assert project_response.name == active_project["name"]
     assert project_response.description == active_project["description"]
 
-@pytest.mark.anyio
-async def test_invalid_project_operations(client):
+@pytest.mark.asyncio
+async def test_invalid_project_operations(async_client):
     """Test operations with invalid project IDs.
     
     Verifies:
@@ -110,7 +111,7 @@ async def test_invalid_project_operations(client):
     ]
 
     for method, url, *data in operations:
-        response = await client.request(method, url, json=data[0] if data else None)
+        response = await async_client.request(method, url, json=data[0] if data else None)
         assert response.status_code == 422
         error = response.json()
         assert "detail" in error
@@ -128,14 +129,14 @@ async def test_invalid_project_operations(client):
     ]
 
     for method, url, *data in operations:
-        response = await client.request(method, url, json=data[0] if data else None)
+        response = await async_client.request(method, url, json=data[0] if data else None)
         assert response.status_code == 404
         error = response.json()
         assert "detail" in error
         assert "not found" in error["detail"].lower()
 
-@pytest.mark.anyio
-async def test_soft_delete_nonexistent_project(client):
+@pytest.mark.asyncio
+async def test_soft_delete_nonexistent_project(async_client):
     """Test attempting to delete non-existent project.
     
     Verifies:
@@ -144,15 +145,15 @@ async def test_soft_delete_nonexistent_project(client):
     3. Error response contains proper structure
     """
     fake_id = "123e4567-e89b-12d3-a456-426614174000"
-    response = await client.delete(f"/api/projects/{fake_id}")
+    response = await async_client.delete(f"/api/projects/{fake_id}")
     assert response.status_code == 404
     
     error = response.json()
     assert "detail" in error
     assert "not found" in error["detail"].lower()
 
-@pytest.mark.anyio
-async def test_soft_delete_reactivation(inactive_project: dict, client):
+@pytest.mark.asyncio
+async def test_soft_delete_reactivation(inactive_project: dict, async_client):
     """Test reactivating a soft-deleted project.
     
     Verifies:
@@ -166,11 +167,11 @@ async def test_soft_delete_reactivation(inactive_project: dict, client):
     assert inactive_project["active"] is False
     
     # Verify not in active list
-    list_response = await client.get("/api/projects/")
+    list_response = await async_client.get("/api/projects/")
     assert not any(p["id"] == project_id for p in list_response.json())
     
     # Reactivate project
-    update_response = await client.put(
+    update_response = await async_client.put(
         f"/api/projects/{project_id}",
         json={"active": True}
     )
@@ -182,18 +183,18 @@ async def test_soft_delete_reactivation(inactive_project: dict, client):
     assert project_response.active is True
     
     # Verify appears in active list
-    list_after = await client.get("/api/projects/")
+    list_after = await async_client.get("/api/projects/")
     assert any(p["id"] == project_id for p in list_after.json())
     
     # Verify all data preserved
-    get_response = await client.get(f"/api/projects/{project_id}")
+    get_response = await async_client.get(f"/api/projects/{project_id}")
     project = get_response.json()
     project_response = ProjectResponse(**project)
     assert project_response.name == inactive_project["name"]
     assert project_response.description == inactive_project["description"]
 
     # Verify version 0 inherits active state
-    version_response = await client.get(f"/api/projects/{project_id}/versions/0")
+    version_response = await async_client.get(f"/api/projects/{project_id}/versions/0")
     assert version_response.status_code == 200
     version_data = version_response.json()
     version = VersionResponse(**version_data)

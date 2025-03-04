@@ -1,66 +1,104 @@
-"""CRUD operations for projects."""
-from typing import Optional, List
+"""CRUD operations for projects using Supabase."""
+from typing import Optional, List, Dict, Any, Union
 from uuid import UUID
-from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
 
-from ..models.project import Project
-from ..models.version import Version
-from ..schemas.project import ProjectCreate, ProjectUpdate
+from ..models.project import Project, ProjectCreate, ProjectUpdate
+from ..models.base import dict_to_model
+from ..services.supabase.client import get_supabase_client
 
 class ProjectCRUD:
-    """CRUD operations for projects"""
+    """CRUD operations for projects using Supabase"""
     
     @staticmethod
-    async def get(db: AsyncSession, project_id: UUID) -> Optional[Project]:
+    def get(project_id: UUID) -> Optional[Project]:
         """Get a project by ID"""
-        result = await db.execute(
-            select(Project)
-            .options(joinedload(Project.versions))
-            .filter(Project.id == project_id)
-        )
-        return result.unique().scalar_one_or_none()
+        client = get_supabase_client()
+        
+        # Query the projects table
+        result = client.table("projects").select("*").eq("id", str(project_id)).execute()
+        
+        if not result.data:
+            return None
+        
+        # Convert to Project model
+        return dict_to_model(result.data[0], Project)
 
     @staticmethod
-    async def get_multi(db: AsyncSession, skip: int = 0, limit: int = 100) -> List[Project]:
+    def get_multi(skip: int = 0, limit: int = 100) -> List[Project]:
         """Get a list of active projects"""
-        result = await db.execute(
-            select(Project)
-            .filter(Project.active == True)
-            .offset(skip)
-            .limit(limit)
-        )
-        return result.scalars().all()
+        client = get_supabase_client()
+        
+        # Query for active projects with pagination
+        result = client.table("projects") \
+            .select("*") \
+            .eq("is_active", True) \
+            .order("created_at", desc=True) \
+            .range(skip, skip + limit - 1) \
+            .execute()
+        
+        # Convert to Project models
+        return [dict_to_model(item, Project) for item in result.data]
 
     @staticmethod
-    async def create(db: AsyncSession, project: ProjectCreate) -> Project:
+    def create(project: ProjectCreate) -> Project:
         """Create a new project"""
-        db_project = Project(
-            name=project.name,
-            description=project.description
-        )
-        db.add(db_project)
-        await db.commit()
-        await db.refresh(db_project)
-        return db_project
+        client = get_supabase_client()
+        
+        # Prepare data for insertion
+        project_data = {
+            "name": project.name,
+            "description": project.description,
+            "is_active": True
+        }
+        
+        # Insert the project
+        result = client.table("projects").insert(project_data).execute()
+        
+        if not result.data:
+            raise ValueError("Failed to create project")
+        
+        # Convert to Project model
+        return dict_to_model(result.data[0], Project)
 
     @staticmethod
-    async def update(db: AsyncSession, project_id: UUID, project: ProjectUpdate) -> Optional[Project]:
+    def update(project_id: UUID, project: ProjectUpdate) -> Optional[Project]:
         """Update a project"""
+        client = get_supabase_client()
+        
+        # Extract fields to update
         update_data = project.model_dump(exclude_unset=True)
         if not update_data:
             return None
-            
-        stmt = update(Project).where(Project.id == project_id).values(**update_data).returning(Project)
-        result = await db.execute(stmt)
-        await db.commit()
-        return result.scalar_one_or_none()
+        
+        # Ensure field name alignment with Supabase schema
+        if "active" in update_data:
+            update_data["is_active"] = update_data.pop("active")
+        
+        # Update the project
+        result = client.table("projects") \
+            .update(update_data) \
+            .eq("id", str(project_id)) \
+            .execute()
+        
+        if not result.data:
+            return None
+        
+        # Convert to Project model
+        return dict_to_model(result.data[0], Project)
 
     @staticmethod
-    async def delete(db: AsyncSession, project_id: UUID) -> Optional[Project]:
-        """Soft delete a project by setting active=False"""
-        stmt = update(Project).where(Project.id == project_id).values(active=False).returning(Project)
-        result = await db.execute(stmt)
-        await db.commit()
-        return result.scalar_one_or_none()
+    def delete(project_id: UUID) -> Optional[Project]:
+        """Soft delete a project by setting is_active=False"""
+        client = get_supabase_client()
+        
+        # Soft delete by updating is_active to False
+        result = client.table("projects") \
+            .update({"is_active": False}) \
+            .eq("id", str(project_id)) \
+            .execute()
+        
+        if not result.data:
+            return None
+        
+        # Convert to Project model
+        return dict_to_model(result.data[0], Project)

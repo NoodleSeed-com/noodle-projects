@@ -13,10 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_db
 from app.crud.project import ProjectCRUD
 from app.crud.version.crud import VersionCRUD
-from app.models.project import Project
-from app.models.version import Version
-from app.schemas.project import ProjectCreate, ProjectUpdate
-from app.schemas.version import VersionCreate, VersionResponse
+from app.models.project import Project, ProjectCreate, ProjectUpdate
+from app.models.version import Version, VersionCreate, VersionResponse
 from app.errors import NoodleError, ErrorType
 
 # Configure logging

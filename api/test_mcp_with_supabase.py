@@ -24,8 +24,8 @@ import pytest
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from app.crud.project import ProjectCRUD
 from app.crud.version.crud import VersionCRUD
-from app.schemas.project import ProjectCreate
-from app.schemas.version import VersionCreate
+from app.models.project import ProjectCreate
+from app.models.version import VersionCreate
 
 class DatabaseClient:
     """Client for database operations using SQLAlchemy."""

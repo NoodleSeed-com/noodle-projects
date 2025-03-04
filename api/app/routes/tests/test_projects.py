@@ -3,9 +3,9 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from uuid import UUID
-from ...schemas.common import FileOperation, FileChange
-from ...schemas.project import ProjectResponse
-from ...schemas.version import VersionResponse
+from ...models.file import FileOperation, FileChange
+from ...models.project import ProjectResponse
+from ...models.version import VersionResponse
 
 @pytest.mark.asyncio
 async def test_inactive_project_operations(client: TestClient, mock_openrouter, db_session):

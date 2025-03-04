@@ -6,14 +6,15 @@ from app.crud import projects, versions
 from app.schemas.project import ProjectCreate
 from app.schemas.common import FileChange, FileOperation
 from sqlalchemy.exc import OperationalError
+from app.config import settings
 
 def get_template_files():
-    """Helper function to get all files from the template directory."""
-    # Use the same path as in crud.py
-    template_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'templates', 'version-0')
+    """Helper function to get all files from the temporary template directory."""
+    # Use the settings path that should now point to our temporary directory
+    template_dir = os.path.join(settings.TEMPLATE_PATH, 'version-0')
     
-    # Print the template directory path and check if it exists
-    print(f"Template directory: {template_dir}")
+    # Log information for debugging
+    print(f"Using template directory: {template_dir}")
     print(f"Template directory exists: {os.path.exists(template_dir)}")
     if os.path.exists(template_dir):
         print("Files in template directory:", os.listdir(template_dir))
@@ -27,7 +28,7 @@ def get_template_files():
                 content = f.read()
             files.append((relative_path, content))
     
-    # Print found files
+    # Log found files
     print(f"Found {len(files)} template files:")
     for path, _ in files:
         print(f"  - {path}")

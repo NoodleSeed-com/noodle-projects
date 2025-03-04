@@ -8,9 +8,9 @@ import logging
 from unittest.mock import Mock, patch, MagicMock, mock_open, AsyncMock, call
 from pathlib import Path
 from openai import AsyncOpenAI, OpenAIError, APITimeoutError, RateLimitError
+from ...config import settings
 from ...services.openrouter import OpenRouterService, _read_prompt_file
-from ...schemas.file import FileResponse
-from ...schemas.common import FileChange, AIResponse
+from ...models.file import FileResponse, FileChange, AIResponse
 
 @pytest.mark.asyncio
 async def test_get_file_changes_with_none_client():
@@ -36,7 +36,8 @@ async def test_service_client_creation(mock_openai_class):
     mock_client = AsyncMock()
     mock_openai_class.return_value = mock_client
 
-    with patch.dict('os.environ', {'OPENROUTER_API_KEY': 'test-key'}):
+    # Use monkeypatch instead of patch.dict to avoid side effects
+    with patch.object(settings, 'OPENROUTER_API_KEY', 'test-key'):
         service = OpenRouterService()
         await service._ensure_client()
         
@@ -53,7 +54,8 @@ async def test_service_client_creation(mock_openai_class):
 @pytest.mark.asyncio
 async def test_service_missing_api_key():
     """Test service creation without API key."""
-    with patch.dict('os.environ', {'OPENROUTER_API_KEY': ''}):
+    # Use monkeypatch instead of patch.dict to avoid side effects
+    with patch.object(settings, 'OPENROUTER_API_KEY', None):
         service = OpenRouterService()
         with pytest.raises(ValueError, match="OPENROUTER_API_KEY environment variable is required"):
             await service._ensure_client()

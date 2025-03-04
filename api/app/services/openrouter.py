@@ -3,19 +3,14 @@ import os
 import re
 import json
 import logging
-import asyncio
+import time
 from pathlib import Path
-from typing import List, Any, Dict, Optional
-from openai import AsyncOpenAI, APITimeoutError, RateLimitError, OpenAIError
-from ..schemas.common import FileChange, AIResponse
-from ..schemas.file import FileResponse
+from typing import List, Any, Dict, Optional, Callable
+from openai import OpenAI, APITimeoutError, RateLimitError, OpenAIError
+from ..models.file import FileChange, AIResponse, FileResponse
 
 def _read_prompt_file(filename: str) -> str:
-    """Read prompt content from a file.
-    
-    This is a synchronous function since it's a simple file read operation
-    that doesn't benefit significantly from async I/O.
-    """
+    """Read prompt content from a file."""
     prompt_path = Path(__file__).parent / "prompts" / filename
     with open(prompt_path, "r") as f:
         return f.read().strip()
@@ -28,19 +23,19 @@ class OpenRouterService:
         self.client = client
         self._client_initialized = client is not None
     
-    async def _ensure_client(self):
+    def _ensure_client(self):
         """Ensure client is initialized."""
         if not self._client_initialized:
-            self.client = await self._get_client()
+            self.client = self._get_client()
             self._client_initialized = True
     
-    async def _get_client(self) -> AsyncOpenAI:
-        """Get AsyncOpenAI client configured for OpenRouter."""
+    def _get_client(self) -> OpenAI:
+        """Get OpenAI client configured for OpenRouter."""
         api_key = os.getenv("OPENROUTER_API_KEY", "test_key")
         if not api_key:
             raise ValueError("OPENROUTER_API_KEY environment variable is required")
             
-        return AsyncOpenAI(
+        return OpenAI(
             base_url="https://openrouter.ai/api/v1",
             api_key=api_key,
             default_headers={
@@ -49,7 +44,7 @@ class OpenRouterService:
             }
         )
     
-    async def _process_ai_response(self, response_text: str) -> List[FileChange]:
+    def _process_ai_response(self, response_text: str) -> List[FileChange]:
         """Process AI response text and extract file changes.
         
         Args:
@@ -76,9 +71,9 @@ class OpenRouterService:
         
         return ai_response.changes
     
-    async def _execute_with_retry(
+    def _execute_with_retry(
         self, 
-        func,
+        func: Callable,
         *args,
         max_retries: int = 2,
         **kwargs
@@ -86,7 +81,7 @@ class OpenRouterService:
         """Execute a function with retry logic.
         
         Args:
-            func: The async function to execute
+            func: The function to execute
             *args: Positional arguments for the function
             max_retries: Maximum number of retry attempts (default: 2)
             **kwargs: Keyword arguments for the function
@@ -106,9 +101,9 @@ class OpenRouterService:
                     # Calculate backoff time: 1s, 2s for retries
                     backoff_time = retries
                     logging.info(f"Retrying request (attempt {retries} of {max_retries}) after {backoff_time}s delay")
-                    await asyncio.sleep(backoff_time)
+                    time.sleep(backoff_time)
                 
-                return await func(*args, **kwargs)
+                return func(*args, **kwargs)
                 
             except (APITimeoutError, RateLimitError, OpenAIError) as e:
                 last_exception = e
@@ -128,7 +123,7 @@ class OpenRouterService:
         logging.error(f"All retry attempts failed: {str(last_exception)}")
         raise last_exception
     
-    async def get_file_changes(
+    def get_file_changes(
         self,
         project_context: str,
         change_request: str,
@@ -147,7 +142,7 @@ class OpenRouterService:
         Raises:
             ValueError: If AI response is invalid or contains duplicate paths
         """
-        await self._ensure_client()
+        self._ensure_client()
         
         if self.client is None or self.client.chat is None:
             # During testing, we still validate the mock data
@@ -175,18 +170,18 @@ class OpenRouterService:
             {"role": "user", "content": user_message}
         ]
         
-        # Define an async function to make the API call to avoid capturing outer scope variables
-        async def make_api_call():
-            completion = await self.client.chat.completions.create(
+        # Define a function to make the API call to avoid capturing outer scope variables
+        def make_api_call():
+            completion = self.client.chat.completions.create(
                 model=model,
                 messages=messages
             )
             response_text = completion.choices[0].message.content
-            return await self._process_ai_response(response_text)
+            return self._process_ai_response(response_text)
         
         # Execute the API call with retry logic
-        return await self._execute_with_retry(make_api_call)
+        return self._execute_with_retry(make_api_call)
 
-async def get_openrouter():
+def get_openrouter():
     """Dependency to get OpenRouter service."""
     return OpenRouterService()

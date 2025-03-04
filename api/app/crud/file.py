@@ -1,54 +1,54 @@
-"""CRUD operations for files."""
-from typing import Optional, List
+"""CRUD operations for files using Supabase."""
+from typing import Optional, List, Dict, Any
 from uuid import UUID
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..models.file import File
-from ..schemas.file import FileResponse
+from ..models.base import dict_to_model
+from ..models.file import FileResponse
+from ..services.supabase.client import get_supabase_client
 
 class FileCRUD:
-    """CRUD operations for files"""
+    """CRUD operations for files using Supabase"""
     
     @staticmethod
-    async def get_by_version(
-        db: AsyncSession,
+    def get_by_version(
         version_id: UUID
     ) -> List[FileResponse]:
         """Get all files for a specific version."""
-        result = await db.execute(
-            select(File)
-            .filter(File.version_id == version_id)
-        )
-        files = result.scalars().all()
+        client = get_supabase_client()
+        
+        result = client.table("files") \
+            .select("*") \
+            .eq("version_id", str(version_id)) \
+            .execute()
+            
         return [
             FileResponse(
-                id=file.id,
-                path=file.path,
-                content=file.content
-            ) for file in files
+                id=file["id"],
+                path=file["path"],
+                content=file["content"]
+            ) for file in result.data
         ]
 
     @staticmethod
-    async def get_by_path(
-        db: AsyncSession,
+    def get_by_path(
         version_id: UUID,
         path: str
     ) -> Optional[FileResponse]:
         """Get a specific file by its path within a version."""
-        result = await db.execute(
-            select(File)
-            .filter(
-                File.version_id == version_id,
-                File.path == path
-            )
-        )
-        file = result.scalar_one_or_none()
-        if not file:
+        client = get_supabase_client()
+        
+        result = client.table("files") \
+            .select("*") \
+            .eq("version_id", str(version_id)) \
+            .eq("path", path) \
+            .execute()
+            
+        if not result.data:
             return None
             
+        file = result.data[0]
         return FileResponse(
-            id=file.id,
-            path=file.path,
-            content=file.content
+            id=file["id"],
+            path=file["path"],
+            content=file["content"]
         )

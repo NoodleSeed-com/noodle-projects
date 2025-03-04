@@ -3,8 +3,7 @@ import pytest
 import pytest_asyncio
 from uuid import uuid4
 from sqlalchemy import select
-from ...models.file import File
-from ...schemas.file import FileResponse
+from ...models.file import File, FileResponse
 from ..file import FileCRUD
 
 @pytest.mark.asyncio

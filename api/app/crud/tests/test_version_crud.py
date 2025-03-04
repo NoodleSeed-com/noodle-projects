@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from sqlalchemy import select
 from ...models.version import Version
 from ...models.project import Project
-from ...schemas.common import FileChange, FileOperation
+from ...models.file import FileChange, FileOperation
 from ..version.crud import VersionCRUD
 
 @pytest.mark.asyncio

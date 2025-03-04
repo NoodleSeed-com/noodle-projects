@@ -3,8 +3,7 @@ import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, AsyncMock
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 from uuid import uuid4
 import os
@@ -14,74 +13,13 @@ from ...main import app
 from app.models.base import Base
 from ...services.openrouter import get_openrouter
 from ...config import get_db
-from ...models.project import Project
+from ...models.project import Project, ProjectCreate
 from ...models.version import Version
 from ...models.file import File
-from ...schemas.project import ProjectCreate
 from ...crud import projects, versions
 
-# Use a file-based SQLite database instead of in-memory for test session persistence
-TEST_DB_FILE = "test_routes.db"
-TEST_DATABASE_URL = f"sqlite+aiosqlite:///{TEST_DB_FILE}"
-engine = create_async_engine(TEST_DATABASE_URL, echo=True)
-TestingSessionLocal = sessionmaker(
-    bind=engine, class_=AsyncSession, expire_on_commit=False
-)
-
-@pytest.fixture(scope="function", autouse=True)
-def event_loop():
-    """Create a function-scoped event loop for tests.
-    
-    Using function scope with autouse=True prevents the
-    "RuntimeError: Task got Future attached to a different loop" issue
-    that occurs when mixing pytest-asyncio with SQLAlchemy async sessions.
-    """
-    policy = asyncio.get_event_loop_policy()
-    loop = policy.new_event_loop()
-    asyncio.set_event_loop(loop)
-    yield loop
-    # Clean up pending tasks
-    pending = asyncio.all_tasks(loop)
-    if pending:
-        loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-    loop.close()
-    asyncio.set_event_loop(None)
-
-@pytest_asyncio.fixture(scope="function", autouse=True)
-async def setup_database(event_loop):
-    """Set up the test database.
-    
-    We use scope="function" to ensure consistent event loop behavior.
-    Using a file-based SQLite database ensures persistence between connections.
-    """
-    # Remove any existing test database file
-    if os.path.exists(TEST_DB_FILE):
-        os.remove(TEST_DB_FILE)
-    
-    # Create all the tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        # Explicitly commit the changes
-        await conn.commit()
-        
-    yield
-    
-    # Clean up after all tests
-    await engine.dispose()
-    if os.path.exists(TEST_DB_FILE):
-        os.remove(TEST_DB_FILE)
-
-@pytest_asyncio.fixture
-async def db_session():
-    """Create a test database session with transaction isolation."""
-    session = TestingSessionLocal()
-    await session.begin()
-    
-    try:
-        yield session
-    finally:
-        await session.rollback()
-        await session.close()
+# Import the event_loop fixture from the centralized fixtures
+from ...tests.fixtures.db import event_loop, db_session as base_db_session
 
 @pytest.fixture
 def test_project():
@@ -119,11 +57,11 @@ def mock_openrouter():
         app.dependency_overrides.pop(get_openrouter, None)
 
 @pytest_asyncio.fixture
-async def client(db_session):
+async def client(base_db_session):
     """Test client with test database session."""
     # Create an override function for get_db
     async def override_get_db():
-        yield db_session
+        yield base_db_session
     
     # Store original dependency
     original = app.dependency_overrides.get(get_db)
@@ -140,3 +78,10 @@ async def client(db_session):
         app.dependency_overrides[get_db] = original
     else:
         app.dependency_overrides.pop(get_db, None)
+        
+    # Make db_session available to tests that expect it with original name
+    
+@pytest.fixture
+def db_session(base_db_session):
+    """Alias base_db_session as db_session for backward compatibility."""
+    return base_db_session
