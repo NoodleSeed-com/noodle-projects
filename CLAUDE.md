@@ -4,10 +4,21 @@
 - Install with UV: `uv pip install -r requirements.lock`
 - Install with pip (legacy): `pip install -r api/requirements.txt`
 - Run server: `uvicorn app.main:app --reload`
-- Test all: `pytest`
-- Test with coverage: `pytest --cov=app --cov-report=term-missing --cov-report=html`
-- Test specific file: `pytest api/tests/path/to/test_file.py -v`
-- Test specific function: `pytest api/tests/path/to/test_file.py::test_function_name -v`
+- Run all tests: `pytest`
+- Run with coverage: `pytest --cov=app --cov-report=term-missing --cov-report=html`
+- Run specific test: `pytest api/tests/path/to/test_file.py::test_function_name -v`
+- Run tests by marker: `pytest -m unit` or `pytest -m integration`
+- Debug mode: Add `-xvs` flag to see detailed output in real-time
+
+## Test Environment Setup
+- Tests use PostgreSQL with transaction isolation
+- Unit tests (`-m unit`) use mock DB sessions
+- Integration tests (`-m integration`) use real DB with transaction rollback
+- External tests (`-m external`) call external APIs
+- Required env vars in `.env` or `tests/.env`:
+  - DATABASE_URL: PostgreSQL connection string
+  - TEST_DATABASE_URL: Same as DATABASE_URL
+  - TEST_MODE: Set to "true" for test environment
 
 ## Dependency Management
 - Update lockfile: `uv pip compile api/requirements.txt -o requirements.lock`
@@ -15,47 +26,19 @@
 - Run tools without installing: `uvx [tool]` (e.g., `uvx black .`)
 
 ## MCP Commands
-- Test MCP server: `pytest api/tests/test_mcp.py -v`
-- Test MCP with specific connection: `NOODLE_DB_CONNECTION_TYPE=supabase_rest pytest api/tests/test_mcp.py::test_health_check -v`
-- Check Supabase connection: `PYTHONPATH=. python api/check_supabase_conn.py`
-- Run unified MCP server:
-  - Direct connection: `PYTHONPATH=. mcp dev api/app/mcp_server_unified.py`
-  - REST API connection: `NOODLE_DB_CONNECTION_TYPE=supabase_rest PYTHONPATH=. mcp dev api/app/mcp_server_unified.py`
+- Test Supabase client: `PYTHONPATH=. python api/test_supabase_official.py`
+- Run MCP server: `PYTHONPATH=. mcp dev api/app/mcp_server_supabase.py`
 - Inspect MCP server: `mcp inspect http://localhost:8555`
 
 ## Supabase Connection
-- Preferred method: Use Supabase REST API (`python api/test_mcp_with_supabase_rest.py`)
-- Alternative: Transaction mode for serverless/testing: `postgresql+asyncpg://postgres.[PROJECT_REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?ssl=true&prepared_statement_cache_size=0`
-- Test all connection methods: `python api/check_supabase_conn.py`
-- Documentation: See `api/docs/supabase_connection.md` for details
+- Uses official supabase-py client to interact with Supabase
+- Configuration via environment variables:
+  - `SUPABASE_URL`: Your Supabase project URL (required)
+  - `SUPABASE_KEY`: Your Supabase API key (required)
+- Both variables MUST be set before running any Supabase operations
+- Test connection: `PYTHONPATH=. python api/test_supabase_official.py`
 
-## Claude Desktop MCP Integration
-
-### Configure Claude Desktop
-Add Noodle Projects to your Claude Desktop configuration:
-
-1. Find your Claude Desktop config file:
-   - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-   - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-
-2. Add to the `mcpServers` section:
-```json
-"noodle-projects": {
-  "command": "mcp",
-  "args": ["run", "/path/to/noodle-projects/api/app/mcp_server_rest.py"],
-  "env": {
-    "PYTHONPATH": "/path/to/noodle-projects",
-    "SUPABASE_URL": "https://jsanjojgtyyfpnfqwhgx.supabase.co",
-    "SUPABASE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpzYW5qb2pndHl5ZnBuZnF3aGd4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MTAyMjQyNiwiZXhwIjoyMDU2NTk4NDI2fQ.vVA1epNT0gGPCdoFfmmN0eIAhqKsVeujrc80qMyABJM"
-  }
-}
-```
-
-3. Start Claude Desktop and use: `/mcp noodle-projects`
-
-See `api/docs/claude_desktop_setup.md` for detailed setup instructions.
-
-### Available MCP Functions
+## Available MCP Functions
 - `check_health` - Check server health
 - `list_projects` - List all projects
 - `get_project` - Get project details by ID 
@@ -63,29 +46,20 @@ See `api/docs/claude_desktop_setup.md` for detailed setup instructions.
 - `update_project` - Update project details
 - `delete_project` - Delete a project (soft delete)
 - `list_versions` - List versions for a project
-- `get_version` - Get version details
+- `get_version` - Get version details (includes files)
 - `create_version` - Create a new version
-- `get_file` - Get file contents
-- `create_or_update_file` - Create or update a file
 
-See `api/docs/claude_desktop_usage.md` for detailed usage instructions.
-
-## Research Guidelines
-- Use Perplexity proactively for:
-  - Troubleshooting known issues and workarounds
-  - Finding latest library/framework documentation
-  - Accessing information updated since knowledge cutoff
-  - Discovering technical solutions shared by the community
+Note: File operations are handled internally as part of version management.
 
 ## Code Style Guidelines
-- Follow PEP 8 guidelines with consistent indentation (4 spaces)
-- Import order: stdlib → third-party → relative (alphabetical within groups)
-- Type hints required for all functions/methods and return values
-- Use snake_case for variables/functions, CamelCase for classes
+- PEP 8 compliant: 4-space indentation, 88-character line limit
+- Import order: stdlib → third-party → relative (alphabetical)
+- Type hints required for all functions and return values
+- Naming: snake_case for variables/functions, CamelCase for classes
 - Async/await patterns throughout codebase
-- Custom error handling with NoodleError exception class and ErrorType enum
-- Comprehensive docstrings for all functions and classes
-- SQL queries using SQLAlchemy ORM (not raw SQL)
-- Tests required for all new features (minimum 80% coverage)
-- API schemas defined with Pydantic v2
+- Error handling: Use NoodleError with appropriate ErrorType enum
+- Docstrings: Required for all functions, classes, and modules
+- Database: Use supabase-py client for all database operations
+- Tests: Required for all features (80% coverage minimum)
+- API schemas: Use Pydantic v2 models
 - Clear separation between models, schemas, and route handlers
