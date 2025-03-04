@@ -1,99 +1,123 @@
 """
-Version database model.
+Version model and schemas with integrated Pydantic validation.
 """
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Dict, Any, Union, Type, ClassVar
 from uuid import UUID
-from sqlalchemy import String, Integer, ForeignKey, UniqueConstraint, CheckConstraint, event
-from sqlalchemy.orm import Mapped, mapped_column, relationship, object_session, Session
-from sqlalchemy.ext.hybrid import hybrid_property
 
-from sqlalchemy.orm.session import object_session
+from pydantic import Field, field_validator, model_validator
 
-from .base import Base
-from .file import File
-from .project import Project
+from .base import BaseSchema
 from ..errors import NoodleError, ErrorType
 
-class Version(Base):
-    """SQLAlchemy model for versions.
+class VersionBase(BaseSchema):
+    """Base schema for version data."""
+    version_number: int = Field(..., description="Version number", ge=0)
+    name: str = Field("", description="Version name")
+    parent_id: Optional[UUID] = Field(None, description="Parent version ID")
+
+    @field_validator('version_number')
+    @classmethod
+    def validate_version_number(cls, v: int) -> int:
+        """Validate version number is not negative."""
+        if v < 0:
+            raise ValueError("Version number cannot be negative")
+        return v
+
+
+class Version(VersionBase):
+    """
+    Version model using Pydantic v2.
     
     A version represents a point-in-time state of a project's files.
     Each version has a sequential version number and can reference a parent version
     from which it was created.
     """
-    __tablename__ = "versions"
+    id: UUID
+    project_id: UUID = Field(..., description="Project ID")
+    created_at: datetime
+    updated_at: datetime
     
-    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
-    version_number: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    parent_id: Mapped[Optional[UUID]] = mapped_column(
-        ForeignKey("versions.id"),
-        nullable=True
-    )
-    name: Mapped[str] = mapped_column(String, nullable=False, default="")
+    # Optional fields populated from relationships
+    files: Optional[List["File"]] = Field(None, description="List of files in this version")
+    parent_version: Optional[int] = Field(None, description="The version number of the parent version")
+    active: Optional[bool] = Field(None, description="Whether the version is active (inherited from project)")
     
-    __table_args__ = (
-        UniqueConstraint('project_id', 'version_number', name='uq_version'),
-        CheckConstraint('version_number >= 0', name='ck_version_number_positive'),
-    )
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "id": "123e4567-e89b-12d3-a456-426614174000",
+                "project_id": "123e4567-e89b-12d3-a456-426614174001",
+                "version_number": 1,
+                "name": "Initial version",
+                "parent_id": None,
+                "created_at": "2024-02-22T12:00:00Z",
+                "updated_at": "2024-02-22T12:00:00Z",
+                "active": True
+            }
+        }
+    }
     
-    def __init__(self, **kwargs):
-        # Required field validation
-        if 'project_id' not in kwargs:
-            raise NoodleError("project_id is required")
-            
-        # Default version_number to 0 if not provided
-        if 'version_number' not in kwargs:
-            kwargs['version_number'] = 0
-            
-        # Python-level validation for version_number
-        if kwargs['version_number'] < 0:
-            raise NoodleError("Version number cannot be negative")
-            
-        # Get session for validation
-        session = kwargs.pop('session', None)
-            
-        # Store project_id for validation
-        self.project_id = kwargs['project_id']
-            
-        # Initialize to set up relationships
-        super().__init__(**kwargs)
+    @model_validator(mode='after')
+    def validate_model(self) -> 'Version':
+        """Validate project_id is provided."""
+        if not self.project_id:
+            raise ValueError("project_id is required")
+        return self
+    
+    def is_active(self, project_active: bool) -> bool:
+        """Determine if version is active based on project status."""
+        # In this model, active state is inherited from project
+        return project_active
 
-        # Validate if we have a session
-        if session or (session := object_session(self)):
-            self.validate(session)
 
-    def validate(self, session):
-        """Validate version state."""
-        project = session.get(Project, self.project_id)
-        if not project or not project.active:
-            raise NoodleError("Cannot create version in inactive project")
-            
-        # Validate parent version is from same project
-        if self.parent_id:
-            parent = session.get(Version, self.parent_id)
-            if parent and parent.project_id != self.project_id:
-                raise NoodleError(
-                    "Parent version must be from the same project",
-                    error_type=ErrorType.VALIDATION
-                )
+class VersionCreate(BaseSchema):
+    """Schema for creating a new version."""
+    project_id: UUID
+    name: str = Field(default="", description="Version name")
+    parent_id: Optional[UUID] = Field(None, description="Parent version ID")
+    version_number: Optional[int] = Field(None, description="Version number (optional, auto-assigned if not provided)")
 
-    # Relationships
-    project: Mapped["Project"] = relationship("Project", back_populates="versions")
-    files: Mapped[List["File"]] = relationship(
-        back_populates="version",
-        cascade="all, delete-orphan",
-        order_by="File.path"
-    )
+    @field_validator('version_number')
+    @classmethod
+    def validate_version_number(cls, v: Optional[int]) -> Optional[int]:
+        """Validate version number if provided."""
+        if v is not None and v < 0:
+            raise ValueError("Version number cannot be negative")
+        return v
 
-    @hybrid_property
-    def active(self) -> bool:
-        """Whether this version is active (inherited from project)."""
-        return self.project.active
 
-@event.listens_for(Session, "before_commit")
-def validate_version_before_commit(session):
-    """Validate version creation before commit."""
-    for obj in session.new:
-        if isinstance(obj, Version):
-            obj.validate(session)
+class VersionListItem(BaseSchema):
+    """Schema for version list items.
+    
+    Used for the simplified list response when listing all versions of a project.
+    """
+    id: UUID = Field(..., description="Version ID")
+    version_number: int = Field(..., description="Sequential version number", ge=0)
+    name: str = Field(..., description="Version name")
+
+
+class VersionResponse(VersionBase):
+    """Schema for version responses.
+    
+    Used for detailed version information when retrieving a specific version.
+    """
+    id: UUID
+    project_id: UUID
+    parent_version: Optional[int] = Field(None, description="The version number of the parent version (if any)")
+    created_at: datetime
+    updated_at: datetime
+    files: List["FileResponse"] = Field(default_factory=list, description="List of files associated with this version")
+    active: bool = Field(..., description="Whether the version is active (inherited from project)")
+
+
+class CreateVersionRequest(BaseSchema):
+    """Schema for creating a new version with changes."""
+    name: str = Field(..., description="Required name for the version")
+    parent_version_number: int = Field(..., ge=0, description="The version number to base the new version on")
+    project_context: str = Field(..., description="Project context string")
+    change_request: str = Field(..., description="Change request string")
+
+
+# To avoid circular imports, these imports are at the end
+from .file import File, FileResponse

@@ -1,14 +1,24 @@
 """
-File API schemas for request/response validation.
+File API schemas imported from app.models.file.
+This file re-exports schemas to maintain backward compatibility.
 """
-from uuid import UUID
-from pydantic import Field
+from app.models.file import (
+    FileOperation,
+    FileBase,
+    File,
+    FileCreate,
+    FileUpdate,
+    FileResponse,
+    FileChange
+)
 
-from .base import BaseSchema
-from .common import FileOperation
-
-class FileResponse(BaseSchema):
-    """Schema for file responses."""
-    id: UUID = Field(..., description="File ID")
-    path: str = Field(..., description="File path")
-    content: str = Field(..., description="File content")
+# Original schema names for backward compatibility
+__all__ = [
+    "FileOperation",
+    "FileBase",
+    "File",
+    "FileCreate", 
+    "FileUpdate",
+    "FileResponse",
+    "FileChange"
+]

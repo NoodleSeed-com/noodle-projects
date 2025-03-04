@@ -1,81 +1,84 @@
 """
-CRUD operations for files.
+CRUD operations for files using Supabase client.
 """
 from typing import Optional, List, Dict
 from uuid import UUID
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.file import File
-from app.schemas.file import FileResponse
+from app.models.file import File, FileResponse
 from app.errors import NoodleError, ErrorType
+from app.services.supabase.client import get_supabase_client
 
 class FileCRUD:
-    """CRUD operations for files."""
+    """CRUD operations for files using Supabase."""
     
     @staticmethod
-    async def get_by_version(
-        db: AsyncSession,
+    def get_by_version(
         version_id: UUID
     ) -> List[FileResponse]:
         """Get all files for a specific version.
         
         Args:
-            db: Database session
             version_id: UUID of the version
             
         Returns:
             List of file response objects
         """
-        result = await db.execute(
-            select(File)
-            .filter(File.version_id == version_id)
-        )
-        files = result.scalars().all()
+        client = get_supabase_client()
+        response = client.table("files") \
+            .select("*") \
+            .eq("version_id", str(version_id)) \
+            .execute()
+            
+        if not response.data:
+            return []
+            
         return [
             FileResponse(
-                id=file.id,
-                path=file.path,
-                content=file.content
-            ) for file in files
+                id=file["id"],
+                version_id=file["version_id"],
+                path=file["path"],
+                content=file["content"],
+                created_at=file["created_at"],
+                updated_at=file["updated_at"]
+            ) for file in response.data
         ]
     
     @staticmethod
-    async def get_by_path(
-        db: AsyncSession,
+    def get_by_path(
         version_id: UUID,
         path: str
     ) -> Optional[FileResponse]:
         """Get a specific file by its path within a version.
         
         Args:
-            db: Database session
             version_id: UUID of the version
             path: File path
             
         Returns:
             File response object or None if not found
         """
-        result = await db.execute(
-            select(File)
-            .filter(
-                File.version_id == version_id,
-                File.path == path
-            )
-        )
-        file = result.scalar_one_or_none()
-        if not file:
+        client = get_supabase_client()
+        response = client.table("files") \
+            .select("*") \
+            .eq("version_id", str(version_id)) \
+            .eq("path", path) \
+            .execute()
+            
+        if not response.data:
             return None
             
+        file = response.data[0]
         return FileResponse(
-            id=file.id,
-            path=file.path,
-            content=file.content
+            id=file["id"],
+            version_id=file["version_id"],
+            path=file["path"],
+            content=file["content"],
+            created_at=file["created_at"],
+            updated_at=file["updated_at"]
         )
     
     @staticmethod
-    async def create_file(
-        db: AsyncSession,
+    def create_file(
         version_id: UUID,
         path: str,
         content: str
@@ -83,7 +86,6 @@ class FileCRUD:
         """Create a new file.
         
         Args:
-            db: Database session
             version_id: UUID of the version
             path: File path
             content: File content
@@ -92,7 +94,7 @@ class FileCRUD:
             Created file response object
         """
         # Check if file already exists
-        existing_file = await FileCRUD.get_by_path(db, version_id, path)
+        existing_file = FileCRUD.get_by_path(version_id, path)
         if existing_file:
             raise NoodleError(
                 f"File already exists at path '{path}' in version {version_id}",
@@ -100,100 +102,146 @@ class FileCRUD:
             )
         
         # Create new file
-        file = File(
-            version_id=version_id,
-            path=path,
-            content=content
-        )
-        db.add(file)
-        await db.commit()
-        await db.refresh(file)
+        client = get_supabase_client()
+        file_data = {
+            "version_id": str(version_id),
+            "path": path,
+            "content": content
+        }
         
+        response = client.table("files").insert(file_data).execute()
+        
+        if not response.data:
+            raise NoodleError(
+                "Failed to create file in database",
+                ErrorType.DATABASE
+            )
+            
+        file = response.data[0]
         return FileResponse(
-            id=file.id,
-            path=file.path,
-            content=file.content
+            id=file["id"],
+            version_id=file["version_id"],
+            path=file["path"],
+            content=file["content"],
+            created_at=file["created_at"],
+            updated_at=file["updated_at"]
         )
     
     @staticmethod
-    async def update_content(
-        db: AsyncSession,
+    def update_content(
         file_id: UUID,
         content: str
     ) -> FileResponse:
         """Update a file's content.
         
         Args:
-            db: Database session
             file_id: UUID of the file
             content: New file content
             
         Returns:
             Updated file response object
         """
-        result = await db.execute(
-            select(File)
-            .filter(File.id == file_id)
-        )
-        file = result.scalar_one_or_none()
-        if not file:
+        client = get_supabase_client()
+        
+        # Check if file exists
+        response = client.table("files") \
+            .select("*") \
+            .eq("id", str(file_id)) \
+            .execute()
+            
+        if not response.data:
             raise NoodleError(
                 f"File with ID {file_id} not found",
                 ErrorType.NOT_FOUND
             )
         
-        file.content = content
-        await db.commit()
-        await db.refresh(file)
-        
+        # Update file content
+        update_response = client.table("files") \
+            .update({"content": content}) \
+            .eq("id", str(file_id)) \
+            .execute()
+            
+        if not update_response.data:
+            raise NoodleError(
+                "Failed to update file in database",
+                ErrorType.DATABASE
+            )
+            
+        file = update_response.data[0]
         return FileResponse(
-            id=file.id,
-            path=file.path,
-            content=file.content
+            id=file["id"],
+            version_id=file["version_id"],
+            path=file["path"],
+            content=file["content"],
+            created_at=file["created_at"],
+            updated_at=file["updated_at"]
         )
     
     @staticmethod
-    async def delete_file(
-        db: AsyncSession,
+    def delete_file(
         file_id: UUID
     ) -> None:
         """Delete a file.
         
         Args:
-            db: Database session
             file_id: UUID of the file
         """
-        result = await db.execute(
-            select(File)
-            .filter(File.id == file_id)
-        )
-        file = result.scalar_one_or_none()
-        if not file:
+        client = get_supabase_client()
+        
+        # Check if file exists
+        response = client.table("files") \
+            .select("*") \
+            .eq("id", str(file_id)) \
+            .execute()
+            
+        if not response.data:
             raise NoodleError(
                 f"File with ID {file_id} not found",
                 ErrorType.NOT_FOUND
             )
         
-        await db.delete(file)
-        await db.commit()
+        # Delete file
+        delete_response = client.table("files") \
+            .delete() \
+            .eq("id", str(file_id)) \
+            .execute()
+            
+        if not delete_response.data:
+            raise NoodleError(
+                "Failed to delete file from database",
+                ErrorType.DATABASE
+            )
     
     @staticmethod
-    async def get_files_dict(
-        db: AsyncSession,
+    def get_files_dict(
         version_id: UUID
     ) -> Dict[str, File]:
         """Get all files for a version as a dictionary keyed by path.
         
         Args:
-            db: Database session
             version_id: UUID of the version
             
         Returns:
             Dictionary of files keyed by path
         """
-        result = await db.execute(
-            select(File)
-            .filter(File.version_id == version_id)
-        )
-        files = result.scalars().all()
+        client = get_supabase_client()
+        response = client.table("files") \
+            .select("*") \
+            .eq("version_id", str(version_id)) \
+            .execute()
+            
+        if not response.data:
+            return {}
+            
+        files = [
+            File(
+                id=file["id"],
+                version_id=file["version_id"],
+                path=file["path"],
+                content=file["content"],
+                created_at=file["created_at"],
+                updated_at=file["updated_at"]
+            ) for file in response.data
+        ]
+        
         return {file.path: file for file in files}

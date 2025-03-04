@@ -3,12 +3,12 @@ File operations for version management.
 """
 from typing import Dict, List
 from uuid import UUID
+from datetime import datetime
 
-from app.models.file import File
-from app.schemas.common import FileOperation, FileChange
+from app.models.file import File, FileOperation, FileChange
 from app.errors import NoodleError, ErrorType
 
-async def validate_file_changes(changes: List[FileChange], existing_files: Dict[str, File]) -> None:
+def validate_file_changes(changes: List[FileChange], existing_files: Dict[str, File]) -> None:
     """Validate file changes before applying them.
     
     Args:
@@ -21,19 +21,19 @@ async def validate_file_changes(changes: List[FileChange], existing_files: Dict[
     paths = {}
     for change in changes:
         if not change.path or not change.path.strip():
-            raise NoodleError("File path cannot be empty", ErrorType.VALIDATION_ERROR)
+            raise NoodleError("File path cannot be empty", ErrorType.VALIDATION)
             
         if change.operation in (FileOperation.CREATE, FileOperation.UPDATE) and not change.content:
             raise NoodleError(
                 f"Content required for {change.operation} operation on {change.path}",
-                ErrorType.VALIDATION_ERROR
+                ErrorType.VALIDATION
             )
         
         # Check for duplicate paths in changes
         if change.path in paths:
             raise NoodleError(
                 f"Duplicate file path in changes: {change.path}",
-                ErrorType.VALIDATION_ERROR
+                ErrorType.VALIDATION
             )
         paths[change.path] = True
         
@@ -50,11 +50,11 @@ async def validate_file_changes(changes: List[FileChange], existing_files: Dict[
                     ErrorType.NOT_FOUND
                 )
 
-async def apply_file_changes(
+def apply_file_changes(
     new_version_id: UUID,
     changes: List[FileChange],
     existing_files: Dict[str, File]
-) -> List[File]:
+) -> List[dict]:
     """Apply file changes to create new version files.
     
     Args:
@@ -63,36 +63,38 @@ async def apply_file_changes(
         existing_files: Dictionary of existing files by path
         
     Returns:
-        List of File objects for the new version
+        List of file dictionaries ready for insertion into Supabase
     """
+    now = datetime.utcnow().isoformat()
+    
     # Start with copies of all existing files
     files_to_add = [
-        File(
-            version_id=new_version_id,
-            path=path,
-            content=file.content
-        )
+        {
+            "version_id": str(new_version_id),
+            "path": path,
+            "content": file.content
+        }
         for path, file in existing_files.items()
     ]
     
     # Apply changes
     for change in changes:
         if change.operation == FileOperation.CREATE:
-            files_to_add.append(File(
-                version_id=new_version_id,
-                path=change.path,
-                content=change.content
-            ))
+            files_to_add.append({
+                "version_id": str(new_version_id),
+                "path": change.path,
+                "content": change.content
+            })
         elif change.operation == FileOperation.UPDATE:
             # Remove old file and add updated one
-            files_to_add = [f for f in files_to_add if f.path != change.path]
-            files_to_add.append(File(
-                version_id=new_version_id,
-                path=change.path,
-                content=change.content
-            ))
+            files_to_add = [f for f in files_to_add if f["path"] != change.path]
+            files_to_add.append({
+                "version_id": str(new_version_id),
+                "path": change.path,
+                "content": change.content
+            })
         elif change.operation == FileOperation.DELETE:
             # Remove file from list
-            files_to_add = [f for f in files_to_add if f.path != change.path]
+            files_to_add = [f for f in files_to_add if f["path"] != change.path]
     
     return files_to_add

@@ -1,11 +1,10 @@
 """File operations for version management."""
-from typing import Dict, List
+from typing import Dict, List, Any
 from uuid import UUID
 
-from ...models.file import File
-from ...schemas.common import FileOperation, FileChange
+from ...models.file import FileOperation, FileChange
 
-async def validate_file_changes(changes: List[FileChange], existing_files: Dict[str, File]) -> None:
+def validate_file_changes(changes: List[FileChange], existing_files: Dict[str, Any]) -> None:
     """Validate file changes before applying them.
     
     Args:
@@ -35,11 +34,11 @@ async def validate_file_changes(changes: List[FileChange], existing_files: Dict[
             if change.path not in existing_files:
                 raise ValueError(f"Cannot {change.operation.value} non-existent file: {change.path}")
 
-async def apply_file_changes(
+def apply_file_changes(
     new_version_id: UUID,
     changes: List[FileChange],
-    existing_files: Dict[str, File]
-) -> List[File]:
+    existing_files: Dict[str, Any]
+) -> List[Dict[str, Any]]:
     """Apply file changes to create new version files.
     
     Args:
@@ -48,36 +47,36 @@ async def apply_file_changes(
         existing_files: Dictionary of existing files by path
         
     Returns:
-        List of File objects for the new version
+        List of file data dictionaries for the new version
     """
     # Start with copies of all existing files
     files_to_add = [
-        File(
-            version_id=new_version_id,
-            path=path,
-            content=file.content
-        )
+        {
+            "version_id": str(new_version_id),
+            "path": path,
+            "content": file["content"]
+        }
         for path, file in existing_files.items()
     ]
     
     # Apply changes
     for change in changes:
         if change.operation == FileOperation.CREATE:
-            files_to_add.append(File(
-                version_id=new_version_id,
-                path=change.path,
-                content=change.content
-            ))
+            files_to_add.append({
+                "version_id": str(new_version_id),
+                "path": change.path,
+                "content": change.content
+            })
         elif change.operation == FileOperation.UPDATE:
             # Remove old file and add updated one
-            files_to_add = [f for f in files_to_add if f.path != change.path]
-            files_to_add.append(File(
-                version_id=new_version_id,
-                path=change.path,
-                content=change.content
-            ))
+            files_to_add = [f for f in files_to_add if f["path"] != change.path]
+            files_to_add.append({
+                "version_id": str(new_version_id),
+                "path": change.path,
+                "content": change.content
+            })
         elif change.operation == FileOperation.DELETE:
             # Remove file from list
-            files_to_add = [f for f in files_to_add if f.path != change.path]
+            files_to_add = [f for f in files_to_add if f["path"] != change.path]
     
     return files_to_add
